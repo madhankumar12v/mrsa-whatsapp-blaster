@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -176,6 +178,11 @@ app.get('/api/admin/workspaces', requireAuth, requireRole('super_admin'), async 
     res.json({ workspaces:rows.map(w=>({...w,id:String(w.id)})) });
   } catch(e) { next(e); }
 });
+
+// Serve the built Vite frontend from the same Render web service.
+const frontendDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist');
+app.use(express.static(frontendDist));
+app.get(/^\\/(?!api(?:\\/|$)).*/, (_req, res) => res.sendFile(path.join(frontendDist, 'index.html')));
 
 app.use((err,_req,res,_next) => {
   if (err.code === '23505') return res.status(409).json({ error:'This email is already registered.' });
