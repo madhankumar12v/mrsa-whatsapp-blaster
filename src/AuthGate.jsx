@@ -20,9 +20,7 @@ export default function AuthGate({App}) {
     try{
       const data=await request('/auth/'+mode,{method:'POST',body:JSON.stringify(form)});
       localStorage.setItem('mrsa-auth-token',data.token);setToken(data.token);setUser(data.user);
-      if(data.workspace?.id)setWorkspace(data.workspace);
-      else if(mode==='register')setWorkspace(data.workspace);
-      else { const me=await request('/auth/me',{headers:{Authorization:'Bearer '+data.token}});setWorkspace(me.workspace); }
+      const me=await request('/auth/me',{headers:{Authorization:'Bearer '+data.token}});setWorkspace(me.workspace);
     }catch(err){setError(err.message);}finally{setBusy(false);}
   }
   function logout(){localStorage.removeItem('mrsa-auth-token');setToken('');setUser(null);setWorkspace(null);}
