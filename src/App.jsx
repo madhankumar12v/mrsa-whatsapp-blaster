@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Activity, ArrowDownToLine, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ContactRound, FileSpreadsheet, Filter, Grid2X2, LayoutDashboard, Megaphone, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Upload, Users, X, Zap } from 'lucide-react';
+import { Activity, ArrowDownToLine, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ContactRound, FileSpreadsheet, Filter, Grid2X2, LayoutDashboard, Megaphone, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Upload, Users, X, Zap, LogOut } from 'lucide-react';
 
 const seed = [
   {id:1,name:'Arun Kumar',phone:'+91 98765 43210',group:'Customers',consent:'Opted in',source:'Sample data',updated:'Today'},
@@ -17,7 +17,7 @@ function loadContacts(){
   catch { return seed; }
 }
 
-export default function App(){
+export default function App({currentUser,onLogout,workspace}){
   const [page,setPage]=useState('Contacts');
   const [contacts,setContacts]=useState(loadContacts);
   const [query,setQuery]=useState('');
@@ -82,14 +82,14 @@ export default function App(){
   return <div className="shell">
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark"><Zap size={21} fill="currentColor"/></div><div><b>MrSa<span>Blaster</span></b><small>MRSA SOLUTIONS</small></div></div>
-      <div className="workspace"><div className="workspace-mark">M</div><div><b>MrSa Workspace</b><small>Administrator</small></div><ChevronDown size={15}/></div>
+      <div className="workspace"><div className="workspace-mark">M</div><div><b>{workspace?.name || "MrSa Workspace"}</b><small>{currentUser?.role === "super_admin" ? "Platform Super Admin" : currentUser?.role === "admin" ? "Workspace Admin" : "Workspace User"}</small></div><ChevronDown size={15}/></div>
       <div className="nav-label">WORKSPACE</div>
       <nav>{nav.map(item=><button key={item.name} className={'nav-item '+(page===item.name?'active':'')} onClick={()=>setPage(item.name)}><item.icon size={18}/>{item.name}{item.name==='Contacts'&&<span className="nav-count">{contacts.length}</span>}</button>)}</nav>
       <div className="nav-label preferences">PREFERENCES</div><button className="nav-item" onClick={()=>notify('Settings will be available after account services are connected.')}><Settings size={18}/>Settings</button>
-      <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18}/><b>Need a hand?</b><p>Setup guide and product help.</p><button onClick={()=>notify('Setup guide is coming in a later build.')}>View guide <ArrowUpRight size={13}/></button></div><div className="profile"><div className="profile-avatar">MV</div><div><b>Madhankumar V</b><small>Workspace admin</small></div><MoreHorizontal size={18}/></div></div>
+      <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18}/><b>Need a hand?</b><p>Setup guide and product help.</p><button onClick={()=>notify('Setup guide is coming in a later build.')}>View guide <ArrowUpRight size={13}/></button></div><div className="profile"><div className="profile-avatar">{(currentUser?.name || "U").split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase()}</div><div><b>{currentUser?.name || "Account"}</b><small>{currentUser?.email || currentUser?.role}</small></div><button className="profile-logout" onClick={onLogout} title="Sign out"><LogOut size={16}/></button></div></div>
     </aside>
     <main className="main">
-      <header className="topbar"><div className="crumb">Workspace <span>/</span> <b>{page}</b></div><div className="top-actions"><div className="demo-pill"><i/> Local demo mode</div><button className="icon-button" onClick={()=>notify('You are all caught up.')} aria-label="Notifications"><Bell size={18}/></button><div className="top-avatar">MV</div></div></header>
+      <header className="topbar"><div className="crumb">Workspace <span>/</span> <b>{page}</b></div><div className="top-actions"><div className="demo-pill"><i/> Local demo mode</div><button className="icon-button" onClick={()=>notify('You are all caught up.')} aria-label="Notifications"><Bell size={18}/></button><div className="top-avatar">{(currentUser?.name || "U").split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase()}</div></div></header>
       <div className="content">
         {page==='Contacts'?<>
           <div className="page-head"><div><div className="eyebrow">AUDIENCE MANAGEMENT</div><h1>Contacts</h1><p>Manage your audience, organize groups, and track messaging consent.</p></div><div className="head-actions"><button className="button light" onClick={exportCsv}><ArrowDownToLine size={16}/> Export</button><button className="button primary" onClick={()=>setModal(true)}><Plus size={17}/> Add contact</button></div></div>
