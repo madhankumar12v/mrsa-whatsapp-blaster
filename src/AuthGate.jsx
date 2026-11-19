@@ -1,3 +1,4 @@
+import React from 'react';
 import { useEffect, useState } from 'react';
 import { Zap, ShieldCheck, Users, Clock3, LogOut, Eye, EyeOff } from 'lucide-react';
 const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
