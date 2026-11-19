@@ -1,3 +1,4 @@
+import React from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { CreditCard } from 'lucide-react';
 import Billing from './Billing.jsx';
