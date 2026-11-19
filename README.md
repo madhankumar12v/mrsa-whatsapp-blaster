@@ -2,90 +2,55 @@
 
 A consent-first WhatsApp campaign management platform by **MrSa Solutions**.
 
-## Current milestone — login and trial foundation
+## Subscription configuration
 
-- Email/password registration and login screens.
-- Workspace creation with the registering customer as Workspace Admin.
-- 30-day free trial tracked using PostgreSQL server time.
-- Monthly Starter subscription price configured as **₹299/month**.
-- Roles: platform Super Admin, Workspace Admin and Workspace User.
-- Admin can create additional Admin/User accounts in their workspace.
-- JWT sessions, bcrypt password hashing, login rate limiting, security headers and role checks.
-- Super Admin bootstrap script and workspace overview endpoint.
-- Existing contacts UI remains available after login.
+- 30-day free trial for each newly registered workspace.
+- Starter plan: **₹299 per month** (29,900 paise).
+- Razorpay order creation, signature verification, webhook verification and payment history API are included.
+- A verified successful payment activates the workspace for 30 days.
+- This milestone implements a **manual monthly renewal checkout**, not an automatic recurring mandate. Auto-debit subscriptions, reminders, refunds, invoices and tax documents are not included yet.
 
-## Important status
+## Payment setup (Razorpay)
 
-This is an implementation foundation, not a production-ready paid SaaS yet. The login and trial API require a configured PostgreSQL database and server environment. The trial expiry is displayed and the workspace is marked expired at login, but payment collection, payment webhook verification, automated renewal, invoice handling and subscription activation are **not implemented**. No customer should be charged until those are completed and tested.
+1. Create or use a Razorpay account and obtain API credentials.
+2. Copy `server/.env.example` to `server/.env`.
+3. Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and a separate `RAZORPAY_WEBHOOK_SECRET`. Keep all three server-side only.
+4. In Razorpay Dashboard, configure a webhook pointing to `https://YOUR_API_HOST/api/webhooks/razorpay`, with the same webhook secret. Subscribe to `payment.captured`, `order.paid` and `payment.failed`.
+5. Use Test Mode credentials and test payments first. Switch to Live Mode only after deployment uses HTTPS, webhook delivery is verified, and end-to-end tests pass.
 
-The contacts module still uses browser-local demo storage and is not yet isolated per workspace in the database. Campaign sending and WhatsApp Cloud API integration are not implemented.
+The checkout UI must load Razorpay Checkout using the public Key ID returned by the server. Do not expose the Key Secret or webhook secret in frontend environment variables.
 
-## Run locally
+## Authentication and roles
+
+- Email/password registration and login.
+- Workspace Admin and Workspace User roles, plus platform Super Admin.
+- Passwords are bcrypt-hashed; API sessions use signed JWTs.
+- Super Admin bootstrap: `npm run create:superadmin`.
+
+## Important deployment status
+
+The backend requires PostgreSQL and server environment variables. This repository change does not deploy the API, configure a database, configure the Razorpay dashboard/webhook, or prove a live payment. Payment activation is therefore **not live until the deployment and Razorpay setup steps above are completed**.
+
+The existing contacts UI still uses browser-local demo storage; workspace-scoped contacts, campaigns, official WhatsApp Cloud API integration, and enforcement of subscription access across every paid feature remain future work. Do not use this app to message people without valid WhatsApp opt-in.
+
+## Local development
 
 Requirements: Node.js 20+ and PostgreSQL 14+.
 
-1. Create a PostgreSQL database named `mrsa_blaster`.
-2. Copy `server/.env.example` to `server/.env`. Set `DATABASE_URL`, a unique random `JWT_SECRET` (32+ characters), `CORS_ORIGIN`, and private Super Admin credentials.
-3. From the repository root:
-
 ```bash
 npm install
+cp server/.env.example server/.env
 npm run dev:server
-```
-
-4. In another terminal, create the platform Super Admin:
-
-```bash
 npm run create:superadmin
-```
-
-5. Start the frontend:
-
-```bash
 npm run dev
 ```
 
-The API listens on port 4000 by default; Vite runs on port 5173. The frontend reads `VITE_API_BASE_URL` from the root `.env` file (copy the root `.env.example` to `.env` if needed).
+Set `VITE_API_BASE_URL=http://localhost:4000/api` in the root `.env` file. The API defaults to port 4000 and Vite to 5173.
 
-## Roles
+## Security checklist
 
-- **Super Admin:** MrSa Solutions platform operator; can list all workspaces.
-- **Workspace Admin:** customer account owner; can create additional Admin and User accounts in their workspace.
-- **Workspace User:** team member; login role is available, while fine-grained feature permissions will be added with the next modules.
-
-## Trial and pricing
-
-- Each newly registered workspace gets a 30-day trial from registration.
-- Starter list price: **₹299 per month** (stored as 29,900 paise).
-- Trial expiry is calculated on the server, not from the customer's browser clock.
-- Expired trial status is shown after login. Payment is not currently collected.
-- Before taking payments, implement a payment provider such as Razorpay, verify signed server-to-server webhooks, record payment IDs/invoices, handle failed payments and renewals, and only then activate paid subscriptions.
-
-## Security and WhatsApp compliance
-
-- Never commit `.env` files or expose JWT/database/payment/WhatsApp secrets in frontend variables.
-- Use HTTPS, strong unique production secrets, backups and database access restrictions.
-- Add password reset, email verification, MFA option, audit logs, session revocation and account recovery before broad production use.
-- Use only the official WhatsApp Business Platform / Cloud API.
-- Importing a phone number is not WhatsApp consent. Respect opt-ins, opt-outs and approved template rules.
-
-## Project structure
-
-```text
-server/
-  auth.js
-  db.js
-  index.js
-  schema.sql
-  create-super-admin.js
-src/
-  App.jsx
-  AuthGate.jsx
-  auth.css
-  main.jsx
-  styles.css
-```
-
-## License
-
-Proprietary project for MrSa Solutions.
+- Never commit `.env` files or expose private keys in `VITE_` variables.
+- Use HTTPS, unique production secrets, database backups and restricted database access.
+- Configure Razorpay webhooks and verify their signatures.
+- Add password reset, email verification, MFA option, audit logs and session revocation before broad production use.
+- Use only the official WhatsApp Business Platform / Cloud API and honor opt-outs and approved template rules.
