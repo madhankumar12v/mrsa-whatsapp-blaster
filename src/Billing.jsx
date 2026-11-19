@@ -1,3 +1,4 @@
+import React from 'react';
 import { useEffect, useState } from 'react';
 import { CreditCard, ShieldCheck, Clock3, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 
