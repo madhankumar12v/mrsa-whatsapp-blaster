@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
+import { CreditCard } from 'lucide-react';
+import Billing from './Billing.jsx';
 import { Activity, ArrowDownToLine, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ContactRound, FileSpreadsheet, Filter, Grid2X2, LayoutDashboard, Megaphone, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Upload, Users, X, Zap, LogOut } from 'lucide-react';
 
 const seed = [
@@ -9,7 +11,7 @@ const seed = [
   {id:5,name:'Suresh B',phone:'+91 98765 43214',group:'Leads',consent:'Opted out',source:'Sample data',updated:'2 days ago'},
   {id:6,name:'Nithya P',phone:'+91 98765 43215',group:'Customers',consent:'Opted in',source:'Sample data',updated:'2 days ago'}
 ];
-const nav = [{name:'Overview',icon:LayoutDashboard},{name:'Contacts',icon:ContactRound},{name:'Campaigns',icon:Megaphone},{name:'Templates',icon:MessageCircle},{name:'Reports',icon:Activity}];
+const nav = [{name:'Overview',icon:LayoutDashboard},{name:'Contacts',icon:ContactRound},{name:'Campaigns',icon:Megaphone},{name:'Templates',icon:MessageCircle},{name:'Reports',icon:Activity},{name:'Billing',icon:CreditCard}];
 const cleanPhone = value => String(value || '').replace(/[\\s()-]/g,'');
 
 function loadContacts(){
@@ -107,7 +109,7 @@ export default function App({currentUser,onLogout,workspace}){
             <div className="table-foot"><span>Showing <b>{visible.length?1:0}–{visible.length}</b> of <b>{contacts.length}</b> contacts</span><span><ShieldCheck size={13}/> Saved in this browser</span></div>
           </section>
           <div className="compliance"><ShieldCheck size={18}/><div><b>Consent-first messaging</b><span>Only message people who explicitly opted in. Pending and opted-out contacts must be excluded from campaigns.</span></div><button onClick={()=>notify('WhatsApp consent guidance will be included in the compliance documentation.')}>Learn more <ArrowUpRight size={13}/></button></div>
-        </>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>This module is planned for the next build milestone. Contact management is available now.</p><button className="button primary" onClick={()=>setPage('Contacts')}>Open Contacts <ArrowUpRight size={15}/></button></div>}
+        </>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>This module is planned for the next build milestone. Contact management is available now.</p><button className="button primary" onClick={()=>setPage('Contacts')}>Open Contacts <ArrowUpRight size={15}/></button></div>}
       </div>
       <footer><span>© 2026 MrSa Solutions</span><span><i/> Local demo · v0.1.0</span></footer>
     </main>
