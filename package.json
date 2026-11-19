@@ -8,7 +8,8 @@
     "dev:server": "node --watch server/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "create:superadmin": "node server/create-super-admin.js"
+    "create:superadmin": "node server/create-super-admin.js",
+    "start": "node server/index.js"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
