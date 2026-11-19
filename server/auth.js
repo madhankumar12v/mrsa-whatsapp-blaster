@@ -12,8 +12,16 @@ export async function requireAuth(req, res, next) {
     if (!user || !user.is_active) return res.status(401).json({ error: 'Account is unavailable.' });
     req.user = user;
     if (user.workspace_id) {
-      const result = await req.db.query('SELECT id, name, trial_started_at, trial_ends_at, subscription_status, plan_name, monthly_price_paise FROM workspaces WHERE id=$1', [user.workspace_id]);
+      const result = await req.db.query('SELECT id, name, trial_started_at, trial_ends_at, subscription_status, plan_name, monthly_price_paise, paid_through FROM workspaces WHERE id=$1', [user.workspace_id]);
       req.workspace = result.rows[0] || null;
+      if (req.workspace?.subscription_status === 'trialing' && new Date(req.workspace.trial_ends_at) <= new Date()) {
+        await req.db.query("UPDATE workspaces SET subscription_status='expired' WHERE id=$1 AND subscription_status='trialing'",[user.workspace_id]);
+        req.workspace.subscription_status = 'expired';
+      }
+      if (req.workspace?.subscription_status === 'active' && req.workspace.paid_through && new Date(req.workspace.paid_through) <= new Date()) {
+        await req.db.query("UPDATE workspaces SET subscription_status='expired' WHERE id=$1 AND subscription_status='active'",[user.workspace_id]);
+        req.workspace.subscription_status = 'expired';
+      }
     }
     next();
   } catch {
