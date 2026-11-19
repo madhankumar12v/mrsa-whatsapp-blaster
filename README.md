@@ -2,78 +2,90 @@
 
 A consent-first WhatsApp campaign management platform by **MrSa Solutions**.
 
-## Current milestone — v0.1.0
+## Current milestone — login and trial foundation
 
-The first frontend milestone includes:
-- Responsive dashboard shell and module navigation
-- Contact manager with add-contact flow
-- Duplicate phone-number detection
-- Search, group and consent filters
-- CSV import with basic header mapping
-- CSV export of the current filtered view
-- Contact groups and opt-in / pending / opt-out states
-- Browser-local persistence for demo contacts
+- Email/password registration and login screens.
+- Workspace creation with the registering customer as Workspace Admin.
+- 30-day free trial tracked using PostgreSQL server time.
+- Monthly Starter subscription price configured as **₹299/month**.
+- Roles: platform Super Admin, Workspace Admin and Workspace User.
+- Admin can create additional Admin/User accounts in their workspace.
+- JWT sessions, bcrypt password hashing, login rate limiting, security headers and role checks.
+- Super Admin bootstrap script and workspace overview endpoint.
+- Existing contacts UI remains available after login.
 
-**Prototype limitation:** contacts are currently stored in the browser only. Authentication, shared database storage, backend APIs, campaign sending, delivery tracking, and WhatsApp Cloud API integration are not implemented yet.
+## Important status
+
+This is an implementation foundation, not a production-ready paid SaaS yet. The login and trial API require a configured PostgreSQL database and server environment. The trial expiry is displayed and the workspace is marked expired at login, but payment collection, payment webhook verification, automated renewal, invoice handling and subscription activation are **not implemented**. No customer should be charged until those are completed and tested.
+
+The contacts module still uses browser-local demo storage and is not yet isolated per workspace in the database. Campaign sending and WhatsApp Cloud API integration are not implemented.
 
 ## Run locally
 
-Requirements: Node.js 18.18+ or 20+.
+Requirements: Node.js 20+ and PostgreSQL 14+.
+
+1. Create a PostgreSQL database named `mrsa_blaster`.
+2. Copy `server/.env.example` to `server/.env`. Set `DATABASE_URL`, a unique random `JWT_SECRET` (32+ characters), `CORS_ORIGIN`, and private Super Admin credentials.
+3. From the repository root:
 
 ```bash
 npm install
+npm run dev:server
+```
+
+4. In another terminal, create the platform Super Admin:
+
+```bash
+npm run create:superadmin
+```
+
+5. Start the frontend:
+
+```bash
 npm run dev
 ```
 
-Create a production build:
+The API listens on port 4000 by default; Vite runs on port 5173. The frontend reads `VITE_API_BASE_URL` from the root `.env` file (copy the root `.env.example` to `.env` if needed).
 
-```bash
-npm run build
-npm run preview
-```
+## Roles
 
-## CSV format
+- **Super Admin:** MrSa Solutions platform operator; can list all workspaces.
+- **Workspace Admin:** customer account owner; can create additional Admin and User accounts in their workspace.
+- **Workspace User:** team member; login role is available, while fine-grained feature permissions will be added with the next modules.
 
-The importer requires a header row with `Name` and `Phone`. Optional columns: `Group` and `Consent`.
+## Trial and pricing
 
-Example:
+- Each newly registered workspace gets a 30-day trial from registration.
+- Starter list price: **₹299 per month** (stored as 29,900 paise).
+- Trial expiry is calculated on the server, not from the customer's browser clock.
+- Expired trial status is shown after login. Payment is not currently collected.
+- Before taking payments, implement a payment provider such as Razorpay, verify signed server-to-server webhooks, record payment IDs/invoices, handle failed payments and renewals, and only then activate paid subscriptions.
 
-```csv
-Name,Phone,Group,Consent
-Arun Kumar,+919876543210,Customers,Opted in
-Priya S,+919876543211,Leads,Pending
-```
+## Security and WhatsApp compliance
 
-## Compliance and security
+- Never commit `.env` files or expose JWT/database/payment/WhatsApp secrets in frontend variables.
+- Use HTTPS, strong unique production secrets, backups and database access restrictions.
+- Add password reset, email verification, MFA option, audit logs, session revocation and account recovery before broad production use.
+- Use only the official WhatsApp Business Platform / Cloud API.
+- Importing a phone number is not WhatsApp consent. Respect opt-ins, opt-outs and approved template rules.
 
-- Importing a phone number does not establish WhatsApp opt-in.
-- Only message people who have provided valid permission for the intended message category.
-- Respect opt-outs and maintain a suppression list in the production backend.
-- Use approved WhatsApp message templates when required by Meta policy.
-- Integrate only through the official WhatsApp Business Platform / Cloud API.
-- Keep access tokens, app secrets, and webhook secrets on the server. Never expose them in frontend variables or commit them to Git.
-- Add authentication, role-based access, rate limits, audit logs, and webhook verification before production use.
-
-## Planned milestones
-
-1. Dashboard and contact management — current frontend prototype
-2. Backend API, authentication, database, and durable consent records
-3. Campaign builder, approved template management, scheduling, and queue
-4. Official WhatsApp Cloud API integration and webhook status processing
-5. Analytics, exports, audit logs, and production hardening
-
-## Structure
+## Project structure
 
 ```text
+server/
+  auth.js
+  db.js
+  index.js
+  schema.sql
+  create-super-admin.js
 src/
   App.jsx
+  AuthGate.jsx
+  auth.css
   main.jsx
   styles.css
-index.html
-package.json
-.env.example
 ```
 
 ## License
 
-Proprietary project for MrSa Solutions. Add a formal license before external distribution.
+Proprietary project for MrSa Solutions.
