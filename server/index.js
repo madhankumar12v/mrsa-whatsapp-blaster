@@ -148,8 +148,13 @@ app.post('/api/billing/verify', requireAuth, async (req,res,next) => {
     const expected=crypto.createHmac('sha256',secret).update(razorpay_order_id+'|'+razorpay_payment_id).digest('hex');
     const a=Buffer.from(expected),b=Buffer.from(razorpay_signature);
     if(a.length!==b.length||!crypto.timingSafeEqual(a,b)) return res.status(400).json({error:'Payment signature is invalid.'});
-    const order=await pool.query('SELECT id FROM payment_orders WHERE provider_order_id=$1 AND workspace_id=$2',[razorpay_order_id,req.user.workspace_id]);
+    const order=await pool.query('SELECT id,amount_paise,currency FROM payment_orders WHERE provider_order_id=$1 AND workspace_id=$2',[razorpay_order_id,req.user.workspace_id]);
     if(!order.rows[0]) return res.status(404).json({error:'Payment order not found for this workspace.'});
+    const paymentResponse=await fetch('https://api.razorpay.com/v1/payments/'+encodeURIComponent(razorpay_payment_id),{headers:{Authorization:'Basic '+Buffer.from(process.env.RAZORPAY_KEY_ID+':'+secret).toString('base64')}});
+    const payment=await paymentResponse.json();
+    if(!paymentResponse.ok || payment.order_id!==razorpay_order_id || payment.status!=='captured' || payment.amount!==order.rows[0].amount_paise || payment.currency!==order.rows[0].currency) {
+      return res.status(402).json({error:'Payment is not captured or does not match this subscription order yet. Please wait briefly and retry.'});
+    }
     await activatePaidOrder(razorpay_order_id,razorpay_payment_id);
     const ws=await pool.query('SELECT subscription_status,paid_through FROM workspaces WHERE id=$1',[req.user.workspace_id]);
     res.json({verified:true,subscriptionStatus:ws.rows[0].subscription_status,paidThrough:ws.rows[0].paid_through});
