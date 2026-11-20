@@ -117,3 +117,26 @@ Set these Cloudflare build environment variables (and the same variables locally
 Then apply the SQL migration in Supabase SQL Editor. In Supabase Authentication → URL Configuration, add the deployed Cloudflare URL to Site URL / Redirect URLs. If email confirmation is enabled, new users must confirm their email before signing in.
 
 **Not yet migrated:** the Billing screen still calls legacy Express endpoints; contacts UI still uses local demo storage; team-user invitation, admin management, Cloudflare API functions, Razorpay and WhatsApp Cloud API are future milestones. Do not treat the app as production-ready until these are implemented and tested.
+
+## Razorpay billing API (separate Cloudflare Worker)
+
+The billing milestone adds a separate Cloudflare Worker so the existing frontend deployment is not replaced. Deploy it from the repository root with:
+
+```bash
+npx wrangler deploy --config cloudflare/wrangler.billing.toml
+```
+
+Before deployment, configure these Worker secrets (never put them in GitHub or any `VITE_` variable):
+
+- `SUPABASE_SECRET_KEY` — Supabase server-side Secret key (or legacy service_role key)
+- `RAZORPAY_KEY_ID` — Razorpay Test Mode key ID initially
+- `RAZORPAY_KEY_SECRET` — matching Razorpay Test Mode secret
+- `RAZORPAY_WEBHOOK_SECRET` — a new webhook signing secret you choose and also enter in the Razorpay webhook settings
+
+The Supabase Project URL is a non-secret Worker variable named `SUPABASE_URL`. The allowed frontend origin is configured as `ALLOWED_ORIGIN` in `cloudflare/wrangler.billing.toml`; change it if the deployed frontend URL differs.
+
+Apply `supabase/migrations/202611200002_razorpay_billing.sql` in Supabase SQL Editor before testing. It creates payment records and a server-only, atomic activation function. The Worker validates the Supabase access token, requires a workspace Admin, creates ₹299 INR orders, verifies Razorpay signatures and captured payment status, and handles signed `payment.captured` webhooks.
+
+After deploying, set the frontend Cloudflare build variable `VITE_BILLING_API_URL` to the new Worker URL plus `/api` (for example, `https://mrsa-whatsapp-blaster-billing.<your-workers-subdomain>.workers.dev/api`) and redeploy the frontend. Configure the Razorpay webhook URL as the Worker URL plus `/api/webhooks/razorpay`, subscribe to `payment.captured`, and use the exact same webhook secret in the Worker.
+
+This release implements **manual monthly checkout**: each successful ₹299 payment grants 30 days. It does not create an automatic recurring mandate or Razorpay Subscription. Keep Razorpay in Test Mode until order creation, successful/failed payments, duplicate webhook delivery, payment history, and trial-to-paid activation have all been tested.
