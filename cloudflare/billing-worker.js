@@ -85,6 +85,15 @@ async function handle(request, env) {
         const ok = await activate(env, payment.order_id, payment.id, payment.amount, payment.currency);
         if (!ok) return json({ error: "Payment did not match a pending order." }, 400);
       }
+    } else if (event.event === "payment.failed") {
+      const payment = event.payload?.payment?.entity;
+      if (payment?.order_id) {
+        const q = new URLSearchParams({ provider_order_id: "eq." + payment.order_id, status: "eq.created" });
+        await sb(env, "payment_orders?" + q.toString(), {
+          method: "PATCH", headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ status: "failed" })
+        });
+      }
     }
     return json({ received: true });
   }
