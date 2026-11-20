@@ -16,7 +16,7 @@ function loadContacts(){
 }
 
 function mapContact(row){
-  return { id:row.id, name:row.full_name, phone:row.phone, group:row.group_name || 'Customers', consent:row.consent_status==='opted_in'?'Opted in':row.consent_status==='opted_out'?'Opted out':'Pending', source:row.consent_source || '—', consentEvidence:row.consent_evidence || '', consentAt:row.consent_at || null, updated:row.updated_at ? new Date(row.updated_at).toLocaleDateString('en-IN') : 'Saved' };
+  return { id:row.id, name:row.full_name, phone:row.phone, group:row.group_name || 'Customers', consent:row.consent_status==='opted_in'?'Opted in':row.consent_status==='opted_out'?'Opted out':'Pending', source:row.consent_source || '—', consentEvidence:row.consent_evidence || '', consentScope:row.consent_scope || '', consentAt:row.consent_at || null, updated:row.updated_at ? new Date(row.updated_at).toLocaleDateString('en-IN') : 'Saved' };
 }
 
 export default function App({currentUser,onLogout,workspace}){
@@ -29,7 +29,7 @@ export default function App({currentUser,onLogout,workspace}){
   const [selected,setSelected]=useState([]);
   const [modal,setModal]=useState(false);
   const [toast,setToast]=useState('');
-  const [form,setForm]=useState({name:'',phone:'',group:'Customers',consent:'Pending',consentSource:'',consentEvidence:'',consentAt:''});
+  const [form,setForm]=useState({name:'',phone:'',group:'Customers',consent:'Pending',consentSource:'',consentEvidence:'',consentScope:'',consentAt:''});
   const fileRef=useRef(null);
   const save=items=>{setContacts(items);localStorage.setItem('mrsa-contacts-v1',JSON.stringify(items));};
   useEffect(()=>{
@@ -37,7 +37,7 @@ export default function App({currentUser,onLogout,workspace}){
     async function loadWorkspaceContacts(){
       if(!workspace?.id){setContacts([]);setContactsLoading(false);return;}
       setContactsLoading(true);
-      const {data,error}=await supabase.from('contacts').select('id,full_name,phone,group_name,consent_status,consent_source,consent_evidence,consent_at,updated_at').eq('workspace_id',workspace.id).order('created_at',{ascending:false}).limit(2000);
+      const {data,error}=await supabase.from('contacts').select('id,full_name,phone,group_name,consent_status,consent_source,consent_evidence,consent_scope,consent_at,updated_at').eq('workspace_id',workspace.id).order('created_at',{ascending:false}).limit(2000);
       if(!alive)return;
       if(error){notify('Contacts could not be loaded from Supabase: '+error.message);setContacts([]);}
       else {const rows=(data||[]).map(mapContact);setContacts(rows);localStorage.setItem('mrsa-contacts-v1',JSON.stringify(rows));}
@@ -60,9 +60,9 @@ export default function App({currentUser,onLogout,workspace}){
     const phone=cleanPhone(form.phone);
     if(!form.name.trim()||phone.length<8||phone.length>15){notify('Enter a valid phone number with country code.');return;}
     if(contacts.some(c=>cleanPhone(c.phone)===phone)){notify('This phone number already exists.');return;}
-    if(form.consent==='Opted in'&&(!form.consentSource.trim()||!form.consentEvidence.trim()||!form.consentAt||Number.isNaN(Date.parse(form.consentAt)))){notify('For opted-in contacts, enter the original consent date, source and evidence.');return;}
+    if(form.consent==='Opted in'&&(!form.consentSource.trim()||!form.consentEvidence.trim()||!form.consentScope||!form.consentAt||Number.isNaN(Date.parse(form.consentAt)))){notify('For opted-in contacts, enter the original consent date, source and evidence.');return;}
     const optedIn=form.consent==='Opted in', optedOut=form.consent==='Opted out';
-    const row={workspace_id:workspace.id,full_name:form.name.trim(),phone,group_name:form.group,consent_status:optedIn?'opted_in':optedOut?'opted_out':'pending',consent_source:form.consentSource.trim()||null,consent_evidence:form.consentEvidence.trim()||null,consent_at:optedIn?new Date(form.consentAt+'T00:00:00.000Z').toISOString():null,created_by:currentUser.id};
+    const row={workspace_id:workspace.id,full_name:form.name.trim(),phone,group_name:form.group,consent_status:optedIn?'opted_in':optedOut?'opted_out':'pending',consent_source:form.consentSource.trim()||null,consent_evidence:form.consentEvidence.trim()||null,consent_scope:form.consentScope||null,consent_at:optedIn?new Date(form.consentAt+'T00:00:00.000Z').toISOString():null,created_by:currentUser.id};
     const {data,error}=await supabase.from('contacts').insert(row).select('id,full_name,phone,group_name,consent_status,consent_source,consent_evidence,consent_at,updated_at').single();
     if(error){notify('Contact could not be saved: '+error.message);return;}
     save([mapContact(data),...contacts]);
@@ -79,19 +79,19 @@ export default function App({currentUser,onLogout,workspace}){
       const headers=split(lines[0]).map(x=>x.trim().toLowerCase());
       const ni=headers.findIndex(x=>['name','full name','contact name'].includes(x));
       const pi=headers.findIndex(x=>['phone','mobile','number','phone number'].includes(x));
-      const gi=headers.indexOf('group'), ci=headers.findIndex(x=>['consent','opt-in','optin','status'].includes(x)), si=headers.indexOf('consent_source'), ei=headers.indexOf('consent_evidence'), ai=headers.indexOf('consent_at');
+      const gi=headers.indexOf('group'), ci=headers.findIndex(x=>['consent','opt-in','optin','status'].includes(x)), si=headers.indexOf('consent_source'), ei=headers.indexOf('consent_evidence'), ai=headers.indexOf('consent_at'), sci=headers.indexOf('consent_scope');
       if(ni<0||pi<0){notify('CSV must contain Name and Phone columns.');return;}
       const known=new Set(contacts.map(c=>cleanPhone(c.phone)));const added=[];
       lines.slice(1).forEach((line,i)=>{
         const cols=split(line),phone=cleanPhone(cols[pi]),name=(cols[ni]||'').trim();
         if(!name||!phone||known.has(phone))return;known.add(phone);
         const raw=(ci>=0?cols[ci]:'').toLowerCase().trim();
-        const source=si>=0?(cols[si]||'').trim():''; const evidence=ei>=0?(cols[ei]||'').trim():''; const consentAt=ai>=0?(cols[ai]||'').trim():'';
-        const consent=['opted in','yes','true','consented'].includes(raw)&&source&&evidence&&consentAt&&!Number.isNaN(Date.parse(consentAt))?'Opted in':['opted out','no','false','unsubscribed'].includes(raw)?'Opted out':'Pending';
-        added.push({name,phone,group:(gi>=0&&cols[gi])||'Imported',consent,source,evidence,consentAt});
+        const source=si>=0?(cols[si]||'').trim():''; const evidence=ei>=0?(cols[ei]||'').trim():''; const consentAt=ai>=0?(cols[ai]||'').trim():''; const consentScope=sci>=0?(cols[sci]||'').trim().toLowerCase():'';
+        const consent=['opted in','yes','true','consented'].includes(raw)&&source&&evidence&&consentAt&&['marketing','utility','all'].includes(consentScope)&&!Number.isNaN(Date.parse(consentAt))?'Opted in':['opted out','no','false','unsubscribed'].includes(raw)?'Opted out':'Pending';
+        added.push({name,phone,group:(gi>=0&&cols[gi])||'Imported',consent,source,evidence,consentAt,consentScope});
       });
-      if(!added.length){notify('No new contacts to import. Opted-in rows need consent_at, consent_source and consent_evidence columns.');return;}
-      const rows=added.map(c=>({workspace_id:workspace.id,full_name:c.name,phone:c.phone,group_name:c.group,consent_status:c.consent==='Opted in'?'opted_in':c.consent==='Opted out'?'opted_out':'pending',consent_source:c.source||null,consent_evidence:c.evidence||null,consent_at:c.consent==='Opted in'?new Date(c.consentAt).toISOString():null,created_by:currentUser.id}));
+      if(!added.length){notify('No new contacts to import. Opted-in rows need consent_at, consent_source, consent_evidence and consent_scope columns.');return;}
+      const rows=added.map(c=>({workspace_id:workspace.id,full_name:c.name,phone:c.phone,group_name:c.group,consent_status:c.consent==='Opted in'?'opted_in':c.consent==='Opted out'?'opted_out':'pending',consent_source:c.source||null,consent_evidence:c.evidence||null,consent_scope:c.consentScope||null,consent_at:c.consent==='Opted in'?new Date(c.consentAt).toISOString():null,created_by:currentUser.id}));
       const {data,error}=await supabase.from('contacts').insert(rows).select('id,full_name,phone,group_name,consent_status,consent_source,consent_evidence,consent_at,updated_at');
       if(error){notify('CSV import failed: '+error.message);return;}
       save([...(data||[]).map(mapContact),...contacts]);notify(`Imported ${(data||[]).length} contacts into Supabase. Duplicates and incomplete rows skipped.`);
@@ -147,7 +147,7 @@ export default function App({currentUser,onLogout,workspace}){
       </div>
       <footer><span>© 2026 MrSa Solutions</span><span><i/> Supabase contacts · v0.1.0</span></footer>
     </main>
-    {modal&&<div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&setModal(false)}><form className="modal" onSubmit={addContact}><div className="modal-head"><div><h2>Add new contact</h2><p>Save a contact and record their messaging consent.</p></div><button type="button" className="icon-button" onClick={()=>setModal(false)}><X size={18}/></button></div><label>Full name<input required autoFocus value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Arun Kumar"/></label><label>Phone number<input required value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+91 98765 43210"/></label><label>Contact group<select value={form.group} onChange={e=>setForm({...form,group:e.target.value})}><option>Customers</option><option>Leads</option><option>VIP</option><option>Partners</option></select></label><label>WhatsApp consent<select value={form.consent} onChange={e=>setForm({...form,consent:e.target.value})}><option>Pending</option><option>Opted in</option><option>Opted out</option></select></label>{form.consent==='Opted in'&&<><label>Original opt-in date<input required type="date" value={form.consentAt} onChange={e=>setForm({...form,consentAt:e.target.value})}/></label><label>Opt-in source<input required value={form.consentSource} onChange={e=>setForm({...form,consentSource:e.target.value})} placeholder="e.g. Website signup form / in-store form"/></label><label>Consent evidence<input required value={form.consentEvidence} onChange={e=>setForm({...form,consentEvidence:e.target.value})} placeholder="e.g. Form reference, date, or recorded permission details"/></label></>}<div className="consent-tip"><ShieldCheck size={16}/> Record opt-in only when valid permission has been received.</div><div className="modal-actions"><button type="button" className="button light" onClick={()=>setModal(false)}>Cancel</button><button type="submit" className="button primary"><Plus size={15}/> Save contact</button></div></form></div>}
+    {modal&&<div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&setModal(false)}><form className="modal" onSubmit={addContact}><div className="modal-head"><div><h2>Add new contact</h2><p>Save a contact and record their messaging consent.</p></div><button type="button" className="icon-button" onClick={()=>setModal(false)}><X size={18}/></button></div><label>Full name<input required autoFocus value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Arun Kumar"/></label><label>Phone number<input required value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+91 98765 43210"/></label><label>Contact group<select value={form.group} onChange={e=>setForm({...form,group:e.target.value})}><option>Customers</option><option>Leads</option><option>VIP</option><option>Partners</option></select></label><label>WhatsApp consent<select value={form.consent} onChange={e=>setForm({...form,consent:e.target.value})}><option>Pending</option><option>Opted in</option><option>Opted out</option></select></label>{form.consent==='Opted in'&&<><label>Consent category<select required value={form.consentScope} onChange={e=>setForm({...form,consentScope:e.target.value})}><option value="">Choose category</option><option value="marketing">Marketing / promotional messages</option><option value="utility">Service / transactional updates</option><option value="all">Both marketing and service updates</option></select></label><label>Original opt-in date<input required type="date" value={form.consentAt} onChange={e=>setForm({...form,consentAt:e.target.value})}/></label><label>Opt-in source<input required value={form.consentSource} onChange={e=>setForm({...form,consentSource:e.target.value})} placeholder="e.g. Website signup form / in-store form"/></label><label>Consent evidence<input required value={form.consentEvidence} onChange={e=>setForm({...form,consentEvidence:e.target.value})} placeholder="e.g. Form reference, date, or recorded permission details"/></label></>}<div className="consent-tip"><ShieldCheck size={16}/> Record opt-in only when valid permission has been received.</div><div className="modal-actions"><button type="button" className="button light" onClick={()=>setModal(false)}>Cancel</button><button type="submit" className="button primary"><Plus size={15}/> Save contact</button></div></form></div>}
     {toast&&<div className="toast"><Check size={16}/>{toast}<button onClick={()=>setToast('')}><X size={15}/></button></div>}
   </div>;
 }
