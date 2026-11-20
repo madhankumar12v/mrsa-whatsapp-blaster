@@ -10,7 +10,7 @@ The production deployment target is **GitHub + Cloudflare + Supabase**. Render i
 | --- | --- |
 | GitHub | Source control, main branch and deployment source |
 | Cloudflare Pages | React/Vite frontend hosting and Git-connected deployments |
-| Cloudflare Workers / Pages Functions | Server-side API, manual UPI payment approval, protected secrets |
+| Cloudflare | React/Vite frontend hosting and Git-connected deployments |
 | Supabase | PostgreSQL database, Supabase Auth, user/workspace data, trial and subscription records, Row Level Security |
 | UPI | Customer-initiated ₹299 payment; admin verifies the UTR before activation |
 | WhatsApp Cloud API | Official WhatsApp Business messaging integration (separate credentials and approval required) |
@@ -22,10 +22,7 @@ GitHub main
    | automatic build/deploy
    v
 Cloudflare Pages (React frontend)
-   | /api/* requests
-   v
-Cloudflare Pages Functions / Workers
-   | Supabase client with user JWT / server-side secrets
+   | Supabase Auth + database requests
    v
 Supabase Auth + PostgreSQL (RLS)
    |
@@ -62,7 +59,7 @@ For the React/Vite frontend, connect the GitHub repository to Cloudflare Pages w
 
 The API migration should use Cloudflare Pages Functions (the `functions/` directory) or a separate Cloudflare Worker. Store server-only credentials using Cloudflare secrets/environment bindings, not committed files. Add the API routes and configure Supabase Auth/RLS before directing production traffic to the new backend.
 
-Do not mark the application production-ready until the Pages build, API routes, authentication, RLS isolation, trial expiry, Razorpay signature/webhook handling, and end-to-end payment flow have all been tested.
+Do not mark the application production-ready until the Pages build, authentication, RLS isolation, trial expiry, manual UPI approval workflow, and end-to-end payment flow have all been tested.
 
 ## Product requirements
 
@@ -77,7 +74,7 @@ Do not mark the application production-ready until the Pages build, API routes, 
 
 ## Subscription and payment notes
 
-The existing legacy backend contains initial ₹299 order creation, signature verification and webhook code, but it is not yet migrated to Cloudflare. The intended first release uses a manual monthly checkout and 30-day entitlement after verified payment; automatic recurring debit is a separate Razorpay Subscriptions integration and must not be claimed as enabled.
+The first release uses a manual UPI payment process and grants 30 days of access after an admin verifies the bank credit and approves the submitted UTR. Automatic recurring debit is not enabled.
 
 UPI payments are not verified automatically. A workspace admin must confirm the ₹299 credit in the bank account before approving a submitted UTR. Never activate a subscription based only on a screenshot or a customer-entered reference.
 
@@ -95,12 +92,12 @@ The current `npm run dev:server` and `npm start` scripts launch the legacy Expre
 
 ## Security checklist
 
-- Never commit `.env` files, database passwords, Supabase Secret/service_role keys, Razorpay secrets, WhatsApp access tokens, or webhook secrets.
+- Never commit `.env` files, database passwords, Supabase Secret/service_role keys, WhatsApp access tokens, or webhook secrets.
 - Never expose privileged credentials in `VITE_` variables.
 - Enable and test Supabase RLS for every private table.
 - Verify authorization and workspace ownership in server-side code.
 - Use HTTPS, rate limiting, input validation, audit logs and safe error messages.
-- Verify Razorpay payment signatures and webhook signatures server-side.
+- Verify each submitted UPI transaction against the bank account before approving it.
 - Use only the official WhatsApp Business Platform / Cloud API and honor opt-outs and approved template rules.
 
 ## Supabase Auth migration (initial implementation)
