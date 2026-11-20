@@ -29,8 +29,9 @@ export async function onRequestPost({ request, env }) {
         continue;
       }
       const components = parameters.length ? [{ type: "body", parameters: parameters.map(text => ({ type: "text", text })) }] : [];
+      let sent;
       try {
-        const sent = await graphRequest(env, env.WHATSAPP_PHONE_NUMBER_ID + "/messages", {
+        sent = await graphRequest(env, env.WHATSAPP_PHONE_NUMBER_ID + "/messages", {
           method: "POST",
           body: JSON.stringify({
             messaging_product: "whatsapp",
@@ -40,16 +41,20 @@ export async function onRequestPost({ request, env }) {
             template: { name: templateName, language: { code: language }, ...(components.length ? { components } : {}) }
           })
         });
-        const messageId = sent?.messages?.[0]?.id || null;
+      } catch (error) {
+        results.push({ contactId, sent: false, reason: error.meta || "Meta rejected this message." });
+        continue;
+      }
+      const messageId = sent?.messages?.[0]?.id || null;
+      let logSaved = true;
+      try {
         await db(env, "whatsapp_message_logs", {
           method: "POST",
           headers: { Prefer: "return=minimal" },
           body: JSON.stringify({ workspace_id: workspaceId, contact_id: contact.id, created_by: user.id, recipient_phone: to, template_name: templateName, meta_message_id: messageId, status: "accepted" })
         });
-        results.push({ contactId, sent: true, messageId });
-      } catch (error) {
-        results.push({ contactId, sent: false, reason: error.meta || "Meta rejected this message." });
-      }
+      } catch { logSaved = false; }
+      results.push({ contactId, sent: true, messageId, logSaved });
     }
     return reply({ requested: contactIds.length, sent: results.filter(r => r.sent).length, failed: results.filter(r => !r.sent).length, results });
   } catch (error) { return errorResponse(error); }
