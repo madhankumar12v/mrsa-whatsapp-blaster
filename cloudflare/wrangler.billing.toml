@@ -1,0 +1,7 @@
+name = "mrsa-whatsapp-blaster-billing"
+main = "billing-worker.js"
+compatibility_date = "2026-11-20"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGIN = "https://mrsa-whatsapp-blaster.mrsasolutions2.workers.dev"
