@@ -102,3 +102,18 @@ The current `npm run dev:server` and `npm start` scripts launch the legacy Expre
 - Use HTTPS, rate limiting, input validation, audit logs and safe error messages.
 - Verify Razorpay payment signatures and webhook signatures server-side.
 - Use only the official WhatsApp Business Platform / Cloud API and honor opt-outs and approved template rules.
+
+## Supabase Auth migration (initial implementation)
+
+The initial Supabase migration is now present in `supabase/migrations/202611200001_initial_workspace_auth.sql`. It creates profiles, workspaces, workspace memberships, workspace subscriptions and contacts; a trusted `auth.users` trigger creates a workspace Admin and a 30-day Starter trial for each new signup. RLS policies scope workspace and contact access to the signed-in member and block contact access after trial/subscription expiry. The frontend auth gate now uses Supabase Auth instead of the legacy Express login routes.
+
+### Configure the frontend
+
+Set these Cloudflare build environment variables (and the same variables locally in `.env.local`):
+
+- `VITE_SUPABASE_URL` = your Supabase Project URL (without `/rest/v1/`)
+- `VITE_SUPABASE_PUBLISHABLE_KEY` = your Supabase Publishable key
+
+Then apply the SQL migration in Supabase SQL Editor. In Supabase Authentication → URL Configuration, add the deployed Cloudflare URL to Site URL / Redirect URLs. If email confirmation is enabled, new users must confirm their email before signing in.
+
+**Not yet migrated:** the Billing screen still calls legacy Express endpoints; contacts UI still uses local demo storage; team-user invitation, admin management, Cloudflare API functions, Razorpay and WhatsApp Cloud API are future milestones. Do not treat the app as production-ready until these are implemented and tested.
