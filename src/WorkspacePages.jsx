@@ -23,7 +23,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [drafts, setDrafts] = useState(readDrafts);
-  const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && /^[0-9a-f-]{36}$/i.test(String(c.id)));
+  const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && c.consentScope && /^[0-9a-f-]{36}$/i.test(String(c.id)));
   const eligible = eligibleContacts.length;
   const [templateName, setTemplateName] = useState('');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
@@ -68,7 +68,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <div style={{display:'grid',gap:12,maxWidth:720}}>
         <label className="module-label">Approved Meta template name<input value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder="e.g. november_customer_update"/></label>
         <label className="module-label">Template language code<input value={templateLanguage} onChange={e=>setTemplateLanguage(e.target.value)} placeholder="en_US"/></label>
-        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with opt-in status, timestamp, source and evidence. Maximum 50 recipients per send.</span></div></div>
+        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with opt-in status, date, source, evidence and matching category. Maximum 50 recipients per send.</span></div></div>
         <div><button className="button primary" type="button" disabled={sending || !eligible} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
       </div>
     </section>
