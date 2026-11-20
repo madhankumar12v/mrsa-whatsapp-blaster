@@ -111,9 +111,9 @@ export default function Billing({ workspace, currentUser }) {
       <div style={{ marginTop: 22, padding: 18, background: '#f5f8ff', borderRadius: 12, color: '#334155' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}><ShieldCheck size={19}/><b>Pay using UPI</b></div>
         <p style={{ fontSize: 13, lineHeight: 1.6, marginTop: 0 }}>Open any UPI app and pay exactly ₹299 to the UPI ID below. You can also use the button to open a supported UPI app on your phone.</p>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: 13, background: '#fff', border: '1px solid #dbe4f0', borderRadius: 9 }}>
-          <div><small style={{ color: '#64748b' }}>UPI ID</small><div style={{ fontWeight: 750, fontSize: 17, letterSpacing: '.2px' }}>{UPI_ID}</div></div>
-          <button type="button" className="button light" onClick={copyUpi}><Copy size={15}/> Copy UPI ID</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', padding: 13, background: '#fff', border: '1px solid #dbe4f0', borderRadius: 9 }}>
+          <img src={'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(UPI_LINK)} alt="Scan to pay ₹299 to MrSa Solutions using UPI" width="150" height="150" style={{ borderRadius: 8, border: '1px solid #e2e8f0' }}/>
+          <div style={{ flex: '1 1 210px' }}><small style={{ color: '#64748b' }}>UPI ID</small><div style={{ fontWeight: 750, fontSize: 17, letterSpacing: '.2px' }}>{UPI_ID}</div><button type="button" className="button light" onClick={copyUpi} style={{ marginTop: 10 }}><Copy size={15}/> Copy UPI ID</button></div>
         </div>
         <a href={UPI_LINK} className="button primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none', marginTop: 14 }}><ExternalLink size={16}/> Pay ₹299 using UPI</a>
       </div>
