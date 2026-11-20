@@ -3,7 +3,8 @@
 alter table public.contacts
   add column if not exists consent_at timestamptz,
   add column if not exists consent_source text,
-  add column if not exists consent_evidence text;
+  add column if not exists consent_evidence text,
+  add column if not exists consent_scope text;
 
 create table if not exists public.whatsapp_message_logs (
   id uuid primary key default gen_random_uuid(),
