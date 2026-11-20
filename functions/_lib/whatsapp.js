@@ -6,7 +6,7 @@ export function missingEnv(env, names) { return names.filter(name => !env[name])
 export async function authenticate(request, env) {
   const authorization = request.headers.get("Authorization") || "";
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-  if (!token || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY || !env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!token || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
     throw new Error("AUTH_REQUIRED");
   }
   const userResponse = await fetch(env.SUPABASE_URL + "/auth/v1/user", {
