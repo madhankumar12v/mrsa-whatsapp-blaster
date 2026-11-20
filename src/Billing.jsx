@@ -1,110 +1,151 @@
-import React from 'react';
-import { useEffect, useState } from 'react';
-import { CreditCard, ShieldCheck, Clock3, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, CheckCircle2, Clock3, Copy, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 
-const API = (import.meta.env.VITE_BILLING_API_URL || '/api').replace(/\/$/, '');
-async function api(path, options = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
-  const response = await fetch(API + path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token, ...(options.headers || {}) }
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Request failed.');
-  return data;
+const UPI_ID = '8838037689@sbi';
+const AMOUNT = 299;
+const UPI_LINK = 'upi://pay?pa=8838037689%40sbi&pn=MrSa%20Solutions&am=299.00&cu=INR&tn=MrSa%20Blaster%20Monthly%20Subscription';
+
+function formatDate(value) {
+  return value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 }
-function loadCheckout() {
-  return new Promise((resolve, reject) => {
-    if (window.Razorpay) return resolve(true);
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => reject(new Error('Unable to load secure checkout. Check your internet connection.'));
-    document.body.appendChild(script);
-  });
-}
+
 export default function Billing({ workspace, currentUser }) {
   const [payments, setPayments] = useState([]);
+  const [utr, setUtr] = useState('');
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reviewing, setReviewing] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [loading, setLoading] = useState(true);
+
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const active = workspace?.subscriptionStatus === 'active' && workspace?.paidThrough && new Date(workspace.paidThrough) > new Date();
+  const trial = workspace?.subscriptionStatus === 'trialing' && workspace?.trialEndsAt && new Date(workspace.trialEndsAt) > new Date();
+  const accessUntil = active ? workspace.paidThrough : trial ? workspace.trialEndsAt : null;
+  const pending = useMemo(() => payments.filter(p => p.status === 'pending'), [payments]);
 
   async function refresh() {
-    setLoadingHistory(true);
-    try { const data = await api('/billing/history'); setPayments(data.payments || []); setError(''); }
-    catch (e) { setError(e.message); }
-    finally { setLoadingHistory(false); }
+    if (!workspace?.id) { setLoading(false); return; }
+    setLoading(true);
+    setError('');
+    const { data, error: queryError } = await supabase
+      .from('manual_payment_submissions')
+      .select('id, utr, amount_paise, status, customer_note, admin_note, created_at, reviewed_at, submitted_by')
+      .eq('workspace_id', workspace.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (queryError) setError(queryError.message);
+    else setPayments(data || []);
+    setLoading(false);
   }
-  useEffect(() => { refresh(); }, []);
 
-  async function subscribe() {
+  useEffect(() => { refresh(); }, [workspace?.id]);
+
+  async function submitPayment(event) {
+    event.preventDefault();
     setBusy(true); setError(''); setMessage('');
-    try {
-      const data = await api('/billing/order', { method: 'POST', body: JSON.stringify({}) });
-      await loadCheckout();
-      const checkout = new window.Razorpay({
-        key: data.keyId,
-        amount: data.order.amount,
-        currency: data.order.currency,
-        name: 'MrSa Solutions',
-        description: 'MrSa Blaster Starter · 30 days',
-        order_id: data.order.id,
-        prefill: { name: currentUser?.name, email: currentUser?.email },
-        notes: { workspace: workspace?.name || '' },
-        theme: { color: '#2457d6' },
-        modal: { ondismiss: () => setBusy(false) },
-        handler: async response => {
-          try {
-            await api('/billing/verify', { method: 'POST', body: JSON.stringify(response) });
-            setMessage('Payment verified. Your workspace subscription is active for 30 days.');
-            await refresh();
-            window.location.reload();
-          } catch (e) { setError(e.message); setBusy(false); }
-        }
-      });
-      checkout.on('payment.failed', response => {
-        setError(response.error?.description || 'Payment failed. You can try again.');
-        setBusy(false);
-      });
-      checkout.open();
-    } catch (e) { setError(e.message); setBusy(false); }
+    const reference = utr.trim();
+    if (reference.length < 6) {
+      setError('Enter the UPI transaction reference (UTR) shown in your payment app.');
+      setBusy(false);
+      return;
+    }
+    const { error: insertError } = await supabase.from('manual_payment_submissions').insert({
+      workspace_id: workspace.id,
+      submitted_by: currentUser.id,
+      utr: reference,
+      amount_paise: 29900,
+      customer_note: note.trim() || null
+    });
+    if (insertError) {
+      setError(insertError.code === '23505' ? 'This UTR has already been submitted. Please check the transaction reference.' : insertError.message);
+    } else {
+      setMessage('Payment reference submitted. Your access will be extended after an admin verifies the bank credit.');
+      setUtr(''); setNote('');
+      await refresh();
+    }
+    setBusy(false);
   }
 
-  const active = workspace?.subscriptionStatus === 'active';
-  const trial = workspace?.subscriptionStatus === 'trialing';
-  const date = workspace?.paidThrough || workspace?.trialEndsAt;
+  async function reviewPayment(paymentId, approve) {
+    setReviewing(paymentId); setError(''); setMessage('');
+    const { error: reviewError } = await supabase.rpc('review_manual_payment', {
+      p_payment_id: paymentId,
+      p_approve: approve,
+      p_admin_note: approve ? 'UPI payment verified in bank account.' : 'Payment could not be verified.'
+    });
+    if (reviewError) setError(reviewError.message);
+    else {
+      setMessage(approve ? 'Payment approved. Subscription extended by 30 days.' : 'Payment request rejected.');
+      await refresh();
+      if (approve) window.location.reload();
+    }
+    setReviewing('');
+  }
+
+  async function copyUpi() {
+    try {
+      await navigator.clipboard.writeText(UPI_ID);
+      setMessage('UPI ID copied.');
+    } catch {
+      setError('Copy is unavailable in this browser. Please select the UPI ID and copy it.');
+    }
+  }
+
   return <div className="content">
-    <div className="page-head"><div><div className="eyebrow">ACCOUNT & BILLING</div><h1>Subscription</h1><p>Manage your MrSa Blaster plan and payment history.</p></div></div>
-    <section className="panel" style={{ maxWidth: 850, padding: 28 }}>
+    <div className="page-head"><div><div className="eyebrow">ACCOUNT & BILLING</div><h1>Subscription</h1><p>Pay manually using UPI. Your subscription is activated after payment verification.</p></div></div>
+
+    <section className="panel" style={{ maxWidth: 900, padding: 28 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div><div className="eyebrow">STARTER PLAN</div><h2 style={{ fontSize: 30, margin: '8px 0' }}>₹299 <span style={{ fontSize: 15, fontWeight: 500, color: '#64748b' }}>/ month</span></h2><p style={{ color: '#64748b', margin: 0 }}>30-day subscription period · Secure Razorpay checkout</p></div>
-        <span className={'status ' + (active ? 'opted-in' : trial ? 'pending' : 'opted-out')}><i />{active ? 'Subscription active' : trial ? 'Free trial' : 'Payment required'}</span>
+        <div><div className="eyebrow">STARTER PLAN</div><h2 style={{ fontSize: 30, margin: '8px 0' }}>₹299 <span style={{ fontSize: 15, fontWeight: 500, color: '#64748b' }}>/ 30 days</span></h2><p style={{ color: '#64748b', margin: 0 }}>One-time UPI payment · No automatic deductions</p></div>
+        <span className={'status ' + (active ? 'opted-in' : trial ? 'pending' : 'opted-out')}><i />{active ? 'Subscription active' : trial ? 'Free trial active' : 'Renewal required'}</span>
       </div>
       <hr style={{ border: 0, borderTop: '1px solid #e8edf4', margin: '24px 0' }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 16 }}>
         <div><small style={{ color: '#64748b' }}>Workspace</small><p style={{ fontWeight: 650, margin: '5px 0' }}>{workspace?.name || 'MrSa Solutions'}</p></div>
-        <div><small style={{ color: '#64748b' }}>{active ? 'Paid through' : 'Trial ends'}</small><p style={{ fontWeight: 650, margin: '5px 0' }}>{date ? new Date(date).toLocaleDateString('en-IN') : '—'}</p></div>
-        <div><small style={{ color: '#64748b' }}>Billing cycle</small><p style={{ fontWeight: 650, margin: '5px 0' }}>Monthly</p></div>
+        <div><small style={{ color: '#64748b' }}>{active ? 'Paid through' : trial ? 'Trial ends' : 'Access status'}</small><p style={{ fontWeight: 650, margin: '5px 0' }}>{accessUntil ? formatDate(accessUntil) : 'Payment required'}</p></div>
+        <div><small style={{ color: '#64748b' }}>Billing cycle</small><p style={{ fontWeight: 650, margin: '5px 0' }}>30 days per approved payment</p></div>
       </div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 24, padding: 14, background: '#f5f8ff', borderRadius: 10, color: '#334155' }}>
-        {trial ? <Clock3 size={18} /> : <ShieldCheck size={18} />}
-        <span style={{ fontSize: 13, lineHeight: 1.6 }}>{trial ? 'Your 30-day free trial is active. Subscribe now to continue using the service after the trial ends.' : 'Payments are verified by the MrSa Blaster billing service before the workspace is activated.'} Each successful payment provides 30 days of access. Automatic recurring debit is not enabled in this release.</span>
+
+      <div style={{ marginTop: 22, padding: 18, background: '#f5f8ff', borderRadius: 12, color: '#334155' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}><ShieldCheck size={19}/><b>Pay using UPI</b></div>
+        <p style={{ fontSize: 13, lineHeight: 1.6, marginTop: 0 }}>Open any UPI app and pay exactly ₹299 to the UPI ID below. You can also use the button to open a supported UPI app on your phone.</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: 13, background: '#fff', border: '1px solid #dbe4f0', borderRadius: 9 }}>
+          <div><small style={{ color: '#64748b' }}>UPI ID</small><div style={{ fontWeight: 750, fontSize: 17, letterSpacing: '.2px' }}>{UPI_ID}</div></div>
+          <button type="button" className="button light" onClick={copyUpi}><Copy size={15}/> Copy UPI ID</button>
+        </div>
+        <a href={UPI_LINK} className="button primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none', marginTop: 14 }}><ExternalLink size={16}/> Pay ₹299 using UPI</a>
       </div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 22 }}>
-        <button className="button primary" disabled={busy} onClick={subscribe}><CreditCard size={16} />{busy ? 'Opening secure checkout…' : active ? 'Renew for ₹299' : 'Subscribe for ₹299/month'}</button>
-        <span style={{ fontSize: 12, color: '#64748b' }}>Razorpay · UPI · Cards · Netbanking (availability depends on your account)</span>
+
+      <form onSubmit={submitPayment} style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 600 }}>
+        <div><h3 style={{ margin: '0 0 5px' }}>Submit payment reference</h3><p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>After paying, enter the UTR / transaction ID from your UPI app.</p></div>
+        <label style={{ display: 'grid', gap: 6, fontSize: 13, fontWeight: 650 }}>UPI transaction reference (UTR)<input required minLength={6} maxLength={80} value={utr} onChange={e => setUtr(e.target.value)} placeholder="Enter transaction ID / UTR" style={{ padding: 12, border: '1px solid #cbd5e1', borderRadius: 8 }}/></label>
+        <label style={{ display: 'grid', gap: 6, fontSize: 13, fontWeight: 650 }}>Optional note<input maxLength={250} value={note} onChange={e => setNote(e.target.value)} placeholder="Example: Paid from my SBI account" style={{ padding: 12, border: '1px solid #cbd5e1', borderRadius: 8 }}/></label>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><button className="button primary" type="submit" disabled={busy || !workspace?.id}>{busy ? 'Submitting…' : 'Submit payment reference'}</button><span style={{ color: '#64748b', fontSize: 12 }}>Admin approval required</span></div>
+      </form>
+
+      <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 22, padding: 13, background: '#fff8e8', borderRadius: 9, color: '#854d0e', fontSize: 13, lineHeight: 1.55 }}>
+        <AlertCircle size={17} style={{ flexShrink: 0, marginTop: 1 }}/><span>Submitting a UTR does not automatically activate your subscription. An admin must confirm the ₹299 credit in the bank account before approving it. Do not share your UPI PIN or OTP.</span>
       </div>
-      {error && <div className="auth-error" style={{ marginTop: 16 }}><AlertCircle size={15} /> {error}</div>}
-      {message && <div style={{ marginTop: 16, color: '#16834a', fontSize: 13 }}><CheckCircle2 size={15} /> {message}</div>}
+      {error && <div className="auth-error" style={{ marginTop: 16 }}><AlertCircle size={15}/> {error}</div>}
+      {message && <div style={{ marginTop: 16, color: '#16834a', fontSize: 13, display: 'flex', alignItems: 'center', gap: 7 }}><CheckCircle2 size={15}/> {message}</div>}
     </section>
-    <section className="panel" style={{ maxWidth: 850, marginTop: 22 }}>
-      <div className="panel-head"><div><h2>Payment history</h2><p>Your latest subscription payment attempts.</p></div><button className="button light" onClick={refresh} disabled={loadingHistory}><RefreshCw size={15} /> Refresh</button></div>
-      <div className="table-scroll"><table><thead><tr><th>DATE</th><th>ORDER ID</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>
-        {payments.map(p => <tr key={p.provider_order_id}><td>{new Date(p.created_at).toLocaleDateString('en-IN')}</td><td>{p.provider_order_id}</td><td>₹{(p.amount_paise / 100).toFixed(2)}</td><td><span className={'status ' + (p.status === 'paid' ? 'opted-in' : p.status === 'failed' ? 'opted-out' : 'pending')}><i />{p.status}</span></td></tr>)}
-        {!payments.length && <tr><td colSpan="4" style={{ textAlign: 'center', padding: 28, color: '#64748b' }}>{loadingHistory ? 'Loading payment history…' : 'No payments recorded yet.'}</td></tr>}
+
+    {isAdmin && <section className="panel" style={{ maxWidth: 900, marginTop: 22 }}>
+      <div className="panel-head"><div><h2>Admin payment approvals <span className="count">{pending.length}</span></h2><p>Verify the actual bank credit before approving a payment.</p></div><button className="button light" onClick={refresh} disabled={loading}><RefreshCw size={15}/> Refresh</button></div>
+      <div className="table-scroll"><table><thead><tr><th>SUBMITTED</th><th>UTR / TRANSACTION ID</th><th>AMOUNT</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>
+        {payments.map(p => <tr key={p.id}><td>{formatDate(p.created_at)}</td><td style={{ fontWeight: 650 }}>{p.utr}</td><td>₹{(p.amount_paise / 100).toFixed(2)}</td><td><span className={'status ' + (p.status === 'approved' ? 'opted-in' : p.status === 'rejected' ? 'opted-out' : 'pending')}><i/>{p.status}</span></td><td>{p.status === 'pending' ? <div style={{ display: 'flex', gap: 6 }}><button className="button primary" disabled={!!reviewing} onClick={() => reviewPayment(p.id, true)}>{reviewing === p.id ? 'Working…' : 'Approve'}</button><button className="button light" disabled={!!reviewing} onClick={() => reviewPayment(p.id, false)}>Reject</button></div> : p.admin_note || '—'}</td></tr>)}
+        {!payments.length && <tr><td colSpan="5" style={{ textAlign: 'center', padding: 28, color: '#64748b' }}>{loading ? 'Loading payment requests…' : 'No payment requests yet.'}</td></tr>}
+      </tbody></table></div>
+    </section>}
+
+    <section className="panel" style={{ maxWidth: 900, marginTop: 22 }}>
+      <div className="panel-head"><div><h2>Payment submissions</h2><p>Track the status of your submitted UPI references.</p></div><button className="button light" onClick={refresh} disabled={loading}><RefreshCw size={15}/> Refresh</button></div>
+      <div className="table-scroll"><table><thead><tr><th>DATE</th><th>UTR / TRANSACTION ID</th><th>AMOUNT</th><th>STATUS</th><th>ADMIN NOTE</th></tr></thead><tbody>
+        {payments.map(p => <tr key={p.id}><td>{formatDate(p.created_at)}</td><td>{p.utr}</td><td>₹{(p.amount_paise / 100).toFixed(2)}</td><td><span className={'status ' + (p.status === 'approved' ? 'opted-in' : p.status === 'rejected' ? 'opted-out' : 'pending')}><i/>{p.status}</span></td><td>{p.admin_note || '—'}</td></tr>)}
+        {!payments.length && <tr><td colSpan="5" style={{ textAlign: 'center', padding: 28, color: '#64748b' }}>{loading ? 'Loading payment submissions…' : 'No payments submitted yet.'}</td></tr>}
       </tbody></table></div>
     </section>
   </div>;
