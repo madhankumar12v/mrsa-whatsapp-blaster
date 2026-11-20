@@ -25,9 +25,17 @@ revoke all on public.manual_payment_submissions from anon, authenticated;
 grant select, insert on public.manual_payment_submissions to authenticated;
 
 drop policy if exists "Workspace members can view payment submissions" on public.manual_payment_submissions;
-create policy "Workspace members can view payment submissions"
+create policy "Submitters and workspace admins can view payment submissions"
   on public.manual_payment_submissions for select to authenticated
-  using (public.is_workspace_member(workspace_id));
+  using (
+    submitted_by = (select auth.uid())
+    or exists (
+      select 1 from public.workspace_memberships wm
+      where wm.workspace_id = manual_payment_submissions.workspace_id
+        and wm.user_id = (select auth.uid())
+        and wm.role = 'admin'
+    )
+  );
 
 drop policy if exists "Workspace members can submit UPI payment references" on public.manual_payment_submissions;
 create policy "Workspace members can submit UPI payment references"
