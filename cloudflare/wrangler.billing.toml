@@ -1,8 +1,0 @@
-name = "mrsa-whatsapp-blaster-billing"
-main = "billing-worker.js"
-compatibility_date = "2026-11-20"
-workers_dev = true
-
-[vars]
-SUPABASE_URL = "https://mjrexsufndebbwsdinyb.supabase.co"
-ALLOWED_ORIGIN = "https://mrsa-whatsapp-blaster.mrsasolutions2.workers.dev"
