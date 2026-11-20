@@ -8,6 +8,7 @@ const secretNames = [
   ['SUPABASE_SERVICE_ROLE_KEY', 'Supabase service role key'],
   ['WHATSAPP_ACCESS_TOKEN', 'Meta WhatsApp access token'],
   ['WHATSAPP_PHONE_NUMBER_ID', 'WhatsApp Phone Number ID'],
+  ['WHATSAPP_BUSINESS_ACCOUNT_ID', 'WhatsApp Business Account ID (WABA ID)'],
   ['WHATSAPP_VERIFY_TOKEN', 'Webhook verify token (create a long random value)'],
   ['META_APP_SECRET', 'Meta App Secret'],
   ['WHATSAPP_API_VERSION', 'Optional: v27.0']
@@ -78,7 +79,7 @@ export default function WhatsAppPlatformPage({ workspace }) {
         <ul style={{paddingLeft:18,margin:0}}>
           <li>Only workspace Admins with an active subscription or unexpired trial can send.</li>
           <li>Only approved WhatsApp message templates can be sent by the API endpoint.</li>
-          <li>Every recipient must have consent_status = opted_in plus consent timestamp, source and evidence.</li>
+          <li>Every recipient must have consent_status = opted_in plus original consent date, source, evidence and the matching consent category.</li>
           <li>Pending, opted-out, sample and browser-only contacts are rejected.</li>
           <li>One request is limited to 50 recipients; each recipient is checked server-side before sending.</li>
         </ul>
