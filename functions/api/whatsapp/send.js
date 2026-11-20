@@ -3,7 +3,7 @@ import { authenticate, cleanPhone, db, errorResponse, graphRequest, reply, requi
 export async function onRequestPost({ request, env }) {
   try {
     const { user } = await authenticate(request, env);
-    if (!env.SUPABASE_SERVICE_ROLE_KEY || !env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) return reply({ error: "WhatsApp Cloud API is not configured yet. No messages were sent." }, 503);
+    if (!env.SUPABASE_SERVICE_ROLE_KEY || !env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID || !env.WHATSAPP_BUSINESS_ACCOUNT_ID) return reply({ error: "WhatsApp Cloud API is not configured yet. No messages were sent." }, 503);
     const body = await request.json();
     const workspaceId = body.workspaceId;
     const contactIds = Array.isArray(body.contactIds) ? [...new Set(body.contactIds)] : [];
@@ -15,11 +15,20 @@ export async function onRequestPost({ request, env }) {
     if (!contactIds.length || contactIds.length > 50 || contactIds.some(id => !/^[0-9a-f-]{36}$/i.test(id))) return reply({ error: "Select between 1 and 50 valid saved contacts." }, 400);
     await requireWorkspaceAdmin(env, user.id, workspaceId);
 
+    let templateInfo;
+    try {
+      const templateList = await graphRequest(env, env.WHATSAPP_BUSINESS_ACCOUNT_ID + "/message_templates?name=" + encodeURIComponent(templateName));
+      templateInfo = (templateList.data || []).find(item => item.name === templateName && item.language === language && item.status === "APPROVED");
+    } catch { return reply({ error: "Could not verify the template with Meta. No messages were sent." }, 502); }
+    if (!templateInfo) return reply({ error: "Meta did not return an approved template with that exact name and language. No messages were sent." }, 400);
+    const templateCategory = String(templateInfo.category || "").toLowerCase();
+    if (!["marketing", "utility"].includes(templateCategory)) return reply({ error: "This campaign template category is not supported by the consent guard." }, 400);
+
     const results = [];
     for (const contactId of contactIds) {
-      const contacts = await db(env, "contacts?select=id,full_name,phone,consent_status,consent_at,consent_source,consent_evidence&workspace_id=eq." + encodeURIComponent(workspaceId) + "&id=eq." + encodeURIComponent(contactId) + "&limit=1");
+      const contacts = await db(env, "contacts?select=id,full_name,phone,consent_status,consent_at,consent_source,consent_evidence,consent_scope&workspace_id=eq." + encodeURIComponent(workspaceId) + "&id=eq." + encodeURIComponent(contactId) + "&limit=1");
       const contact = contacts?.[0];
-      if (!contact || contact.consent_status !== "opted_in" || !contact.consent_at || !contact.consent_source || !contact.consent_evidence) {
+      if (!contact || contact.consent_status !== "opted_in" || !contact.consent_at || !contact.consent_source || !contact.consent_evidence || !contact.consent_scope || (contact.consent_scope !== "all" && contact.consent_scope !== templateCategory)) {
         results.push({ contactId, sent: false, reason: "Valid recorded opt-in evidence is missing." });
         continue;
       }
