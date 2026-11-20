@@ -90,7 +90,7 @@ export default function App({currentUser,onLogout,workspace}){
         const consent=['opted in','yes','true','consented'].includes(raw)&&source&&evidence&&consentAt&&!Number.isNaN(Date.parse(consentAt))?'Opted in':['opted out','no','false','unsubscribed'].includes(raw)?'Opted out':'Pending';
         added.push({name,phone,group:(gi>=0&&cols[gi])||'Imported',consent,source,evidence,consentAt});
       });
-      if(!added.length){notify('No new contacts to import. Opted-in rows need consent_source and consent_evidence columns.');return;}
+      if(!added.length){notify('No new contacts to import. Opted-in rows need consent_at, consent_source and consent_evidence columns.');return;}
       const rows=added.map(c=>({workspace_id:workspace.id,full_name:c.name,phone:c.phone,group_name:c.group,consent_status:c.consent==='Opted in'?'opted_in':c.consent==='Opted out'?'opted_out':'pending',consent_source:c.source||null,consent_evidence:c.evidence||null,consent_at:c.consent==='Opted in'?new Date(c.consentAt).toISOString():null,created_by:currentUser.id}));
       const {data,error}=await supabase.from('contacts').insert(rows).select('id,full_name,phone,group_name,consent_status,consent_source,consent_evidence,consent_at,updated_at');
       if(error){notify('CSV import failed: '+error.message);return;}
