@@ -2,6 +2,7 @@ import React from 'react';
 import { useEffect, useState } from 'react';
 import { Zap, ShieldCheck, Users, Clock3, LogOut, Eye, EyeOff } from 'lucide-react';
 import { supabase, supabaseConfigured } from './lib/supabase.js';
+import { SuperAdminDashboard, UserDashboard } from './RoleDashboards.jsx';
 
 async function loadWorkspaceSession(authUser) {
   const { data: profile, error: profileError } = await supabase.from('profiles').select('id, full_name, email, platform_role').eq('id', authUser.id).single();
@@ -110,7 +111,7 @@ export default function AuthGate({ App }) {
       : workspace?.subscriptionStatus === 'expired' ? 'Trial expired · Subscription required'
       : 'MrSa Super Admin'}</span><button onClick={logout}><LogOut size={14}/> Sign out</button></div>
     {workspace?.subscriptionStatus === 'expired' && <div className="trial-expired">Your 30-day free trial has ended. Paid features require an active ₹299/month subscription. Payment activation will be connected in the billing milestone.</div>}
-    <App currentUser={user} onLogout={logout} workspace={workspace}/>
+    {user.role === 'super_admin' ? <SuperAdminDashboard currentUser={user} onLogout={logout}/> : user.role === 'user' ? <UserDashboard currentUser={user} workspace={workspace} onLogout={logout}/> : <App currentUser={user} onLogout={logout} workspace={workspace}/>}
   </>;
   return <div className="auth-screen"><div className="auth-card">
     <div className="auth-brand"><div className="auth-mark"><Zap size={23} fill="currentColor"/></div><div><b>MrSa<span>Blaster</span></b><small>MRSA SOLUTIONS</small></div></div>
