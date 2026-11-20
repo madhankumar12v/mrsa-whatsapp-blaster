@@ -10,9 +10,9 @@ The production deployment target is **GitHub + Cloudflare + Supabase**. Render i
 | --- | --- |
 | GitHub | Source control, main branch and deployment source |
 | Cloudflare Pages | React/Vite frontend hosting and Git-connected deployments |
-| Cloudflare Workers / Pages Functions | Server-side API, Razorpay order and webhook handling, protected secrets |
+| Cloudflare Workers / Pages Functions | Server-side API, manual UPI payment approval, protected secrets |
 | Supabase | PostgreSQL database, Supabase Auth, user/workspace data, trial and subscription records, Row Level Security |
-| Razorpay | ₹299/month subscription checkout and payment processing |
+| UPI | Customer-initiated ₹299 payment; admin verifies the UTR before activation |
 | WhatsApp Cloud API | Official WhatsApp Business messaging integration (separate credentials and approval required) |
 
 ### Request flow
@@ -29,7 +29,7 @@ Cloudflare Pages Functions / Workers
    v
 Supabase Auth + PostgreSQL (RLS)
    |
-   +---- Razorpay API + signed webhook
+   +---- Manual UPI UTR submission + admin review
    |
    +---- WhatsApp Cloud API (after integration)
 ```
@@ -71,7 +71,7 @@ Do not mark the application production-ready until the Pages build, API routes, 
 - 30-day free trial per new workspace.
 - Trial expiry and subscription access enforcement on the server.
 - Starter subscription: **₹299/month**.
-- Razorpay checkout, payment verification, webhook processing and payment history.
+- Manual UPI payment submission, admin approval and payment history.
 - User dashboard, workspace-scoped contact management, consent status, campaigns, templates and message history.
 - Official WhatsApp Business Platform / Cloud API integration, with opt-in and opt-out enforcement.
 
@@ -79,7 +79,7 @@ Do not mark the application production-ready until the Pages build, API routes, 
 
 The existing legacy backend contains initial ₹299 order creation, signature verification and webhook code, but it is not yet migrated to Cloudflare. The intended first release uses a manual monthly checkout and 30-day entitlement after verified payment; automatic recurring debit is a separate Razorpay Subscriptions integration and must not be claimed as enabled.
 
-Razorpay secrets and webhook secrets must be stored only as Cloudflare server-side secrets. Configure a webhook URL on the deployed Cloudflare API and verify the webhook signature against the raw request body. Test in Razorpay Test Mode before enabling Live Mode.
+UPI payments are not verified automatically. A workspace admin must confirm the ₹299 credit in the bank account before approving a submitted UTR. Never activate a subscription based only on a screenshot or a customer-entered reference.
 
 ## Local development
 
@@ -116,27 +116,12 @@ Set these Cloudflare build environment variables (and the same variables locally
 
 Then apply the SQL migration in Supabase SQL Editor. In Supabase Authentication → URL Configuration, add the deployed Cloudflare URL to Site URL / Redirect URLs. If email confirmation is enabled, new users must confirm their email before signing in.
 
-**Not yet migrated:** the Billing screen still calls legacy Express endpoints; contacts UI still uses local demo storage; team-user invitation, admin management, Cloudflare API functions, Razorpay and WhatsApp Cloud API are future milestones. Do not treat the app as production-ready until these are implemented and tested.
+**Not yet migrated:** contacts UI still uses local demo storage; team-user invitation, full platform admin management, Cloudflare API functions and WhatsApp Cloud API are future milestones. Billing uses manual UPI submission and admin approval. Do not treat the app as production-ready until these are implemented and tested.
 
-## Razorpay billing API (separate Cloudflare Worker)
+## Manual UPI billing
 
-The billing milestone adds a separate Cloudflare Worker so the existing frontend deployment is not replaced. Deploy it from the repository root with:
+The Billing screen uses the UPI ID configured in `src/Billing.jsx`. Customers pay ₹299 through their preferred UPI app, then submit the UPI transaction reference (UTR). The app stores each submission in Supabase. A workspace admin must verify the actual bank credit and approve the request; the database function then extends the workspace subscription by 30 days. UTR submission alone never activates access.
 
-```bash
-npx wrangler deploy --config cloudflare/wrangler.billing.toml
-```
+Apply `supabase/migrations/202611200003_manual_upi_billing.sql` in Supabase SQL Editor. No Razorpay or Paytm credentials, webhook, billing Worker, or `VITE_BILLING_API_URL` are required for this manual flow.
 
-Before deployment, configure these Worker secrets (never put them in GitHub or any `VITE_` variable):
-
-- `SUPABASE_SECRET_KEY` — Supabase server-side Secret key (or legacy service_role key)
-- `RAZORPAY_KEY_ID` — Razorpay Test Mode key ID initially
-- `RAZORPAY_KEY_SECRET` — matching Razorpay Test Mode secret
-- `RAZORPAY_WEBHOOK_SECRET` — a new webhook signing secret you choose and also enter in the Razorpay webhook settings
-
-The Supabase Project URL is a non-secret Worker variable named `SUPABASE_URL`. The allowed frontend origin is configured as `ALLOWED_ORIGIN` in `cloudflare/wrangler.billing.toml`; change it if the deployed frontend URL differs.
-
-Apply `supabase/migrations/202611200002_razorpay_billing.sql` in Supabase SQL Editor before testing. It creates payment records and a server-only, atomic activation function. The Worker validates the Supabase access token, requires a workspace Admin, creates ₹299 INR orders, verifies Razorpay signatures and captured payment status, and handles signed `payment.captured` webhooks.
-
-After deploying, set the frontend Cloudflare build variable `VITE_BILLING_API_URL` to the new Worker URL plus `/api` (for example, `https://mrsa-whatsapp-blaster-billing.<your-workers-subdomain>.workers.dev/api`) and redeploy the frontend. Configure the Razorpay webhook URL as the Worker URL plus `/api/webhooks/razorpay`, subscribe to `payment.captured`, and use the exact same webhook secret in the Worker.
-
-This release implements **manual monthly checkout**: each successful ₹299 payment grants 30 days. It does not create an automatic recurring mandate or Razorpay Subscription. Keep Razorpay in Test Mode until order creation, successful/failed payments, duplicate webhook delivery, payment history, and trial-to-paid activation have all been tested.
+After applying the migration, deploy the updated frontend. Test using a small real UPI payment and approve it only after confirming the bank credit. For testing the approval interface without a real customer, use a controlled test workspace and do not grant live subscription time without a verified payment.
