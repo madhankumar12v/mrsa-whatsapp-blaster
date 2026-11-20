@@ -2,6 +2,7 @@ import React from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { CreditCard } from 'lucide-react';
 import Billing from './Billing.jsx';
+import { CampaignsPage, TemplatesPage, ReportsPage, SettingsPage } from './WorkspacePages.jsx';
 import { Activity, ArrowDownToLine, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ContactRound, FileSpreadsheet, Filter, Grid2X2, LayoutDashboard, Megaphone, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Upload, Users, X, Zap, LogOut } from 'lucide-react';
 
 const seed = [
@@ -88,7 +89,7 @@ export default function App({currentUser,onLogout,workspace}){
       <div className="workspace"><div className="workspace-mark">M</div><div><b>{workspace?.name || "MrSa Workspace"}</b><small>{currentUser?.role === "super_admin" ? "Platform Super Admin" : currentUser?.role === "admin" ? "Workspace Admin" : "Workspace User"}</small></div><ChevronDown size={15}/></div>
       <div className="nav-label">WORKSPACE</div>
       <nav>{nav.map(item=><button key={item.name} className={'nav-item '+(page===item.name?'active':'')} onClick={()=>setPage(item.name)}><item.icon size={18}/>{item.name}{item.name==='Contacts'&&<span className="nav-count">{contacts.length}</span>}</button>)}</nav>
-      <div className="nav-label preferences">PREFERENCES</div><button className="nav-item" onClick={()=>notify('Settings will be available after account services are connected.')}><Settings size={18}/>Settings</button>
+      <div className="nav-label preferences">PREFERENCES</div><button className={'nav-item '+(page==='Settings'?'active':'')} onClick={()=>setPage('Settings')}><Settings size={18}/>Settings</button>
       <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18}/><b>Need a hand?</b><p>Setup guide and product help.</p><button onClick={()=>notify('Setup guide is coming in a later build.')}>View guide <ArrowUpRight size={13}/></button></div><div className="profile"><div className="profile-avatar">{(currentUser?.name || "U").split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase()}</div><div><b>{currentUser?.name || "Account"}</b><small>{currentUser?.email || currentUser?.role}</small></div><button className="profile-logout" onClick={onLogout} title="Sign out"><LogOut size={16}/></button></div></div>
     </aside>
     <main className="main">
@@ -119,7 +120,7 @@ export default function App({currentUser,onLogout,workspace}){
             <div className="table-foot"><span>Showing <b>{visible.length?1:0}–{visible.length}</b> of <b>{contacts.length}</b> contacts</span><span><ShieldCheck size={13}/> Saved in this browser</span></div>
           </section>
           <div className="compliance"><ShieldCheck size={18}/><div><b>Consent-first messaging</b><span>Only message people who explicitly opted in. Pending and opted-out contacts must be excluded from campaigns.</span></div><button onClick={()=>notify('WhatsApp consent guidance will be included in the compliance documentation.')}>Learn more <ArrowUpRight size={13}/></button></div>
-        </>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>This module is planned for the next build milestone. Contact management is available now.</p><button className="button primary" onClick={()=>setPage('Contacts')}>Open Contacts <ArrowUpRight size={15}/></button></div>}
+        </>:page==='Campaigns'?<CampaignsPage contacts={contacts} notify={notify}/>:page==='Templates'?<TemplatesPage notify={notify}/>:page==='Reports'?<ReportsPage contacts={contacts} exportCsv={exportCsv}/>:page==='Settings'?<SettingsPage currentUser={currentUser} workspace={workspace}/>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>Choose a module from the workspace menu.</p><button className="button primary" onClick={()=>setPage('Overview')}>Back to Overview <ArrowUpRight size={15}/></button></div>}
       </div>
       <footer><span>© 2026 MrSa Solutions</span><span><i/> Local demo · v0.1.0</span></footer>
     </main>
