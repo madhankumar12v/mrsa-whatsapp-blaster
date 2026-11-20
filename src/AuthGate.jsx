@@ -9,8 +9,8 @@ async function loadWorkspaceSession(authUser) {
   const { data: membership, error: membershipError } = await supabase.from('workspace_memberships').select('workspace_id, role').eq('user_id', authUser.id).limit(1).maybeSingle();
   if (membershipError) throw membershipError;
   let workspace = null;
-  let role = profile.platform_role || 'user';
-  if (membership) {
+  let role = profile.platform_role === 'super_admin' ? 'super_admin' : 'user';
+  if (membership && profile.platform_role !== 'super_admin') {
     role = membership.role;
     const { data: workspaceRow, error: workspaceError } = await supabase.from('workspaces').select('id, name').eq('id', membership.workspace_id).single();
     if (workspaceError) throw workspaceError;
