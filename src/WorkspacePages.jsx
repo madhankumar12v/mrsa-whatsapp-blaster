@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { supabase } from './lib/supabase.js';
 import { Activity, ArrowDownToLine, Check, Clock3, Copy, FileText, Megaphone, MessageCircle, Plus, ShieldCheck, Users, X } from 'lucide-react';
 
 const starterTemplates = [
@@ -18,11 +19,32 @@ function readDrafts() {
   try { return JSON.parse(localStorage.getItem('mrsa-campaign-drafts-v1') || '[]'); } catch { return []; }
 }
 
-export function CampaignsPage({ contacts, notify }) {
+export function CampaignsPage({ contacts, notify, workspace }) {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [drafts, setDrafts] = useState(readDrafts);
-  const eligible = contacts.filter(c => c.consent === 'Opted in').length;
+  const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && /^[0-9a-f-]{36}$/i.test(String(c.id)));
+  const eligible = eligibleContacts.length;
+  const [templateName, setTemplateName] = useState('');
+  const [templateLanguage, setTemplateLanguage] = useState('en_US');
+  const [sending, setSending] = useState(false);
+  async function sendApprovedTemplate() {
+    if (!workspace?.id || !templateName.trim()) { notify('Enter your exact approved Meta template name.'); return; }
+    if (!eligibleContacts.length) { notify('No contacts have complete, recorded opt-in evidence in Supabase.'); return; }
+    const targets = eligibleContacts.slice(0, 50);
+    if (!window.confirm('Send the approved template “' + templateName.trim() + '” to ' + targets.length + ' opted-in contacts now? This will send real WhatsApp messages.')) return;
+    setSending(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error('Please sign in again.');
+      const response = await fetch('/api/whatsapp/send', { method:'POST', headers:{'content-type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({workspaceId:workspace.id,contactIds:targets.map(c=>c.id),templateName:templateName.trim(),language:templateLanguage.trim()}) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Campaign request failed.');
+      notify('WhatsApp send completed: '+body.sent+' sent, '+body.failed+' failed.');
+    } catch (error) { notify(error.message || 'WhatsApp send failed.'); }
+    finally { setSending(false); }
+  }
   function saveDraft(event) {
     event.preventDefault();
     const next = [{ id: Date.now(), name: name.trim(), message: message.trim(), audience: eligible, created: new Date().toISOString(), status: 'Draft' }, ...drafts];
@@ -40,6 +62,15 @@ export function CampaignsPage({ contacts, notify }) {
       <Stat label="Eligible contacts" value={eligible} note="Explicitly opted in only" icon={Users}/>
       <Stat label="Excluded contacts" value={contacts.length - eligible} note="Pending and opted-out" icon={ShieldCheck}/>
       <Stat label="Messages sent" value="0" note="WhatsApp API not connected" icon={MessageCircle}/>
+    </section>
+    <section className="panel" style={{padding:20,marginBottom:18}}>
+      <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Send an approved WhatsApp template</h2><p>Live sending uses Meta Cloud API. Only recorded opted-in Supabase contacts are eligible.</p></div></div>
+      <div style={{display:'grid',gap:12,maxWidth:720}}>
+        <label className="module-label">Approved Meta template name<input value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder="e.g. november_customer_update"/></label>
+        <label className="module-label">Template language code<input value={templateLanguage} onChange={e=>setTemplateLanguage(e.target.value)} placeholder="en_US"/></label>
+        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with opt-in status, timestamp, source and evidence. Maximum 50 recipients per send.</span></div></div>
+        <div><button className="button primary" type="button" disabled={sending || !eligible} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
+      </div>
     </section>
     <section className="panel" style={{padding:20}}>
       <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Create campaign draft</h2><p>Draft only. No WhatsApp messages will be sent from this page.</p></div></div>
