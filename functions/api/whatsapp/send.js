@@ -3,7 +3,7 @@ import { authenticate, cleanPhone, db, errorResponse, graphRequest, reply, requi
 export async function onRequestPost({ request, env }) {
   try {
     const { user } = await authenticate(request, env);
-    if (!env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) return reply({ error: "WhatsApp Cloud API is not configured yet. No messages were sent." }, 503);
+    if (!env.SUPABASE_SERVICE_ROLE_KEY || !env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) return reply({ error: "WhatsApp Cloud API is not configured yet. No messages were sent." }, 503);
     const body = await request.json();
     const workspaceId = body.workspaceId;
     const contactIds = Array.isArray(body.contactIds) ? [...new Set(body.contactIds)] : [];
