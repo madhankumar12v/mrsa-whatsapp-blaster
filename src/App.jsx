@@ -21,7 +21,7 @@ function loadContacts(){
 }
 
 export default function App({currentUser,onLogout,workspace}){
-  const [page,setPage]=useState('Contacts');
+  const [page,setPage]=useState('Overview');
   const [contacts,setContacts]=useState(loadContacts);
   const [query,setQuery]=useState('');
   const [group,setGroup]=useState('All groups');
@@ -94,7 +94,16 @@ export default function App({currentUser,onLogout,workspace}){
     <main className="main">
       <header className="topbar"><div className="crumb">Workspace <span>/</span> <b>{page}</b></div><div className="top-actions"><div className="demo-pill"><i/> Local demo mode</div><button className="icon-button" onClick={()=>notify('You are all caught up.')} aria-label="Notifications"><Bell size={18}/></button><div className="top-avatar">{(currentUser?.name || "U").split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase()}</div></div></header>
       <div className="content">
-        {page==='Contacts'?<>
+        {page==='Overview'?<>
+          <div className="page-head"><div><div className="eyebrow">BUSINESS WORKSPACE</div><h1>Admin Dashboard</h1><p>Welcome back, {currentUser?.name || 'Admin'}. Here is your workspace at a glance.</p></div><div className="head-actions"><button className="button primary" onClick={()=>setPage('Contacts')}><Users size={16}/> Manage contacts</button></div></div>
+          <section className="stats">
+            <div className="stat"><div className="stat-label">Total contacts <span className="stat-icon purple"><Users size={17}/></span></div><strong>{contacts.length.toLocaleString('en-IN')}</strong><small>Saved in this workspace browser</small></div>
+            <div className="stat"><div className="stat-label">Opted-in contacts <span className="stat-icon green"><ShieldCheck size={17}/></span></div><strong>{optedIn.toLocaleString('en-IN')}</strong><small className="good">Eligible audience</small></div>
+            <div className="stat"><div className="stat-label">Opted-out <span className="stat-icon orange"><X size={17}/></span></div><strong>{optedOut.toLocaleString('en-IN')}</strong><small>Excluded from campaigns</small></div>
+            <div className="stat"><div className="stat-label">Subscription <span className="stat-icon blue"><CreditCard size={17}/></span></div><strong>₹299</strong><small>Monthly plan after 30-day trial</small></div>
+          </section>
+          <section className="panel"><div className="panel-head"><div><h2>Workspace management</h2><p>Choose a module to continue managing your business messaging workspace.</p></div></div><div style={{padding:20,display:'flex',gap:10,flexWrap:'wrap'}}><button className="button light" onClick={()=>setPage('Contacts')}><ContactRound size={16}/> Contacts</button><button className="button light" onClick={()=>setPage('Campaigns')}><Megaphone size={16}/> Campaigns</button><button className="button light" onClick={()=>setPage('Reports')}><Activity size={16}/> Reports</button><button className="button light" onClick={()=>setPage('Billing')}><CreditCard size={16}/> Billing</button></div></section>
+        </>:page==='Contacts'?<>
           <div className="page-head"><div><div className="eyebrow">AUDIENCE MANAGEMENT</div><h1>Contacts</h1><p>Manage your audience, organize groups, and track messaging consent.</p></div><div className="head-actions"><button className="button light" onClick={exportCsv}><ArrowDownToLine size={16}/> Export</button><button className="button primary" onClick={()=>setModal(true)}><Plus size={17}/> Add contact</button></div></div>
           <section className="stats">
             <div className="stat"><div className="stat-label">Total contacts <span className="stat-icon purple"><Users size={17}/></span></div><strong>{contacts.length.toLocaleString('en-IN')}</strong><small>Across all groups</small></div>
