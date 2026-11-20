@@ -3,7 +3,7 @@ import { authenticate, db, errorResponse, graphRequest, missingEnv, reply } from
 export async function onRequestGet({ request, env }) {
   try {
     const { user } = await authenticate(request, env);
-    const missing = missingEnv(env, ["SUPABASE_SERVICE_ROLE_KEY", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_VERIFY_TOKEN", "META_APP_SECRET"]);
+    const missing = missingEnv(env, ["SUPABASE_SERVICE_ROLE_KEY", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_BUSINESS_ACCOUNT_ID", "WHATSAPP_VERIFY_TOKEN", "META_APP_SECRET"]);
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
     if (!workspaceId) return reply({ configured: false, connected: false, missing, error: "Workspace is required." }, 400);
