@@ -27,6 +27,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const eligible = eligibleContacts.length;
   const [templateName, setTemplateName] = useState('');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
+  const [templateParameters, setTemplateParameters] = useState('');
   const [sending, setSending] = useState(false);
   async function sendApprovedTemplate() {
     if (!workspace?.id || !templateName.trim()) { notify('Enter your exact approved Meta template name.'); return; }
@@ -38,7 +39,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token;
       if (!token) throw new Error('Please sign in again.');
-      const response = await fetch('/api/whatsapp/send', { method:'POST', headers:{'content-type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({workspaceId:workspace.id,contactIds:targets.map(c=>c.id),templateName:templateName.trim(),language:templateLanguage.trim()}) });
+      const response = await fetch('/api/whatsapp/send', { method:'POST', headers:{'content-type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({workspaceId:workspace.id,contactIds:targets.map(c=>c.id),templateName:templateName.trim(),language:templateLanguage.trim(),parameters:templateParameters.trim()?templateParameters.split('|').map(value=>value.trim()):[]}) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Campaign request failed.');
       notify('WhatsApp send completed: '+body.sent+' sent, '+body.failed+' failed.');
@@ -68,6 +69,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <div style={{display:'grid',gap:12,maxWidth:720}}>
         <label className="module-label">Approved Meta template name<input value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder="e.g. november_customer_update"/></label>
         <label className="module-label">Template language code<input value={templateLanguage} onChange={e=>setTemplateLanguage(e.target.value)} placeholder="en_US"/></label>
+        <label className="module-label">Template body parameters (optional, in order)<input value={templateParameters} onChange={e=>setTemplateParameters(e.target.value)} placeholder="Example: Arun Kumar|Order 123"/></label><small style={{color:"#68778c"}}>Leave blank for templates without variables. Separate body values with a vertical bar (|).</small>
         <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with opt-in status, date, source, evidence and matching category. Maximum 50 recipients per send.</span></div></div>
         <div><button className="button primary" type="button" disabled={sending || !eligible} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
       </div>
