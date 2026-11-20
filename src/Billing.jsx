@@ -3,7 +3,6 @@ import { AlertCircle, CheckCircle2, Clock3, Copy, ExternalLink, RefreshCw, Shiel
 import { supabase } from './lib/supabase.js';
 
 const UPI_ID = '8838037689@sbi';
-const AMOUNT = 299;
 const UPI_LINK = 'upi://pay?pa=8838037689%40sbi&pn=MrSa%20Solutions&am=299.00&cu=INR&tn=MrSa%20Blaster%20Monthly%20Subscription';
 
 function formatDate(value) {
