@@ -24,7 +24,11 @@ function required(env, names) {
   if (missing.length) throw new Error("Server billing configuration is incomplete.");
 }
 function supabaseHeaders(env, userToken) {
-  return { apikey: env.SUPABASE_SECRET_KEY, Authorization: "Bearer " + (userToken || env.SUPABASE_SECRET_KEY), "Content-Type": "application/json" };
+  const headers = { apikey: env.SUPABASE_SECRET_KEY, "Content-Type": "application/json" };
+  // Supabase sb_secret_* keys are opaque API keys, not JWTs: send them only
+  // as apikey. The signed-in user's access token belongs in Authorization.
+  if (userToken) headers.Authorization = "Bearer " + userToken;
+  return headers;
 }
 async function sb(env, path, options = {}, userToken) {
   const response = await fetch(env.SUPABASE_URL.replace(/\/$/, "") + "/rest/v1/" + path, {
