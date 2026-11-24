@@ -28,8 +28,20 @@ export async function onRequestPost({ request, env }) {
     for (const contactId of contactIds) {
       const contacts = await db(env, "contacts?select=id,full_name,phone,consent_status,consent_at,consent_source,consent_evidence,consent_scope&workspace_id=eq." + encodeURIComponent(workspaceId) + "&id=eq." + encodeURIComponent(contactId) + "&limit=1");
       const contact = contacts?.[0];
-      if (!contact || contact.consent_status !== "opted_in" || !contact.consent_at || !contact.consent_source || !contact.consent_evidence || !contact.consent_scope || (contact.consent_scope !== "all" && contact.consent_scope !== templateCategory)) {
-        results.push({ contactId, sent: false, reason: "Valid recorded opt-in evidence is missing." });
+      if (!contact) {
+        results.push({ contactId, sent: false, reason: "Contact was not found in this workspace." });
+        continue;
+      }
+      if (contact.consent_status !== "opted_in") {
+        results.push({ contactId, sent: false, reason: "Contact does not have an active opt-in." });
+        continue;
+      }
+      if (!String(contact.consent_at || "").trim() || !String(contact.consent_source || "").trim() || !String(contact.consent_evidence || "").trim() || !["marketing", "utility", "all"].includes(contact.consent_scope)) {
+        results.push({ contactId, sent: false, reason: "Consent record is incomplete. Add the original consent date, source, evidence and category." });
+        continue;
+      }
+      if (contact.consent_scope !== "all" && contact.consent_scope !== templateCategory) {
+        results.push({ contactId, sent: false, reason: "Consent category mismatch: this template is " + templateCategory + ", but the contact consent covers " + contact.consent_scope + "." });
         continue;
       }
       const to = cleanPhone(contact.phone);
