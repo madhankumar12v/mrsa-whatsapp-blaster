@@ -8,9 +8,11 @@ export async function onRequestPost({ request, env }) {
     const workspaceId = body.workspaceId;
     const contactIds = Array.isArray(body.contactIds) ? [...new Set(body.contactIds)] : [];
     const templateName = String(body.templateName || "").trim().toLowerCase();
+    const campaignCategory = String(body.campaignCategory || "").trim().toLowerCase();
     const language = String(body.language || "en_US").trim();
     const parameters = Array.isArray(body.parameters) ? body.parameters.slice(0, 10).map(v => String(v).slice(0, 500)) : [];
     if (!/^[a-z0-9_]{1,128}$/.test(templateName)) return reply({ error: "Use the exact name of an approved WhatsApp template." }, 400);
+    if (!["marketing", "utility"].includes(campaignCategory)) return reply({ error: "Select Marketing or Utility for this campaign." }, 400);
     if (!/^[a-z]{2}_[A-Z]{2}$/.test(language)) return reply({ error: "Invalid template language code." }, 400);
     if (!contactIds.length || contactIds.length > 50 || contactIds.some(id => !/^[0-9a-f-]{36}$/i.test(id))) return reply({ error: "Select between 1 and 50 valid saved contacts." }, 400);
     await requireWorkspaceAdmin(env, user.id, workspaceId);
@@ -22,6 +24,7 @@ export async function onRequestPost({ request, env }) {
     } catch { return reply({ error: "Could not verify the template with Meta. No messages were sent." }, 502); }
     if (!templateInfo) return reply({ error: "Meta did not return an approved template with that exact name and language. No messages were sent." }, 400);
     const templateCategory = String(templateInfo.category || "").toLowerCase();
+    if (templateCategory !== campaignCategory) return reply({ error: "Campaign category does not match the approved Meta template category (" + templateCategory + "). No messages were sent." }, 400);
     if (!["marketing", "utility"].includes(templateCategory)) return reply({ error: "This campaign template category is not supported by the consent guard." }, 400);
 
     const results = [];
