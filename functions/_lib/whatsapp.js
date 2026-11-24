@@ -31,7 +31,15 @@ export async function db(env, path, options = {}) {
   const text = await response.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-  if (!response.ok) throw new Error("DATABASE_ERROR");
+  if (!response.ok) {
+    console.error("Supabase DB error:", {
+      status: response.status,
+      message: data?.message || data?.msg || "Unknown database error",
+      code: data?.code || null,
+      hint: data?.hint || null
+    });
+    throw new Error("DATABASE_ERROR");
+  }
   return data;
 }
 
