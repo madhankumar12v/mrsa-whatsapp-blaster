@@ -38,7 +38,15 @@ export async function db(env, path, options = {}) {
       code: data?.code || null,
       hint: data?.hint || null
     });
-    throw new Error("DATABASE_ERROR");
+    const diagnostic = {
+      status: response.status,
+      message: data?.message || data?.msg || "Unknown database error",
+      code: data?.code || null,
+      hint: data?.hint || null
+    };
+    const error = new Error("DATABASE_ERROR");
+    error.dbDiagnostic = diagnostic;
+    throw error;
   }
   return data;
 }
@@ -63,7 +71,11 @@ export function errorResponse(error) {
     DATABASE_ERROR: [503, "Workspace data could not be checked. No messages were sent."]
   };
   const [status, message] = map[error.message] || [500, "The request could not be completed."];
-  return reply({ error: message }, status);
+  const body = { error: message };
+  if (error.message === "DATABASE_ERROR" && error.dbDiagnostic) {
+    body.diagnostic = error.dbDiagnostic;
+  }
+  return reply(body, status);
 }
 
 export function cleanPhone(value) { return String(value || "").replace(/[^0-9]/g, ""); }
