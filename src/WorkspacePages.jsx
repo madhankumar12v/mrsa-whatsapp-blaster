@@ -23,7 +23,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [drafts, setDrafts] = useState(readDrafts);
-  const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && c.consentScope && /^[0-9a-f-]{36}$/i.test(String(c.id)));
+  const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && ['marketing','utility','all'].includes(c.consentScope) && /^[0-9a-f-]{36}$/i.test(String(c.id)));
   const eligible = eligibleContacts.length;
   const [templateName, setTemplateName] = useState('');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
@@ -42,7 +42,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       const response = await fetch('/api/whatsapp/send', { method:'POST', headers:{'content-type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({workspaceId:workspace.id,contactIds:targets.map(c=>c.id),templateName:templateName.trim(),language:templateLanguage.trim(),parameters:templateParameters.trim()?templateParameters.split('|').map(value=>value.trim()):[]}) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Campaign request failed.');
-      notify('WhatsApp send completed: '+body.sent+' sent, '+body.failed+' failed.');
+      const firstFailure=body.results?.find(item=>!item.sent); notify('WhatsApp send completed: '+body.sent+' sent, '+body.failed+' failed.'+(firstFailure?' First issue: '+firstFailure.reason:''));
     } catch (error) { notify(error.message || 'WhatsApp send failed.'); }
     finally { setSending(false); }
   }
