@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabase.js';
-import { Activity, ArrowDownToLine, Check, Clock3, Copy, FileText, Megaphone, MessageCircle, Plus, ShieldCheck, Users, X } from 'lucide-react';
+import { Activity, ArrowDownToLine, Check, Clock3, Copy, FileText, Megaphone, MessageCircle, Plus, RefreshCw, ShieldCheck, Users, X } from 'lucide-react';
 
 const starterTemplates = [
   { name: 'Welcome message', category: 'Customer care', body: 'Hello {{name}}, welcome! Thank you for connecting with us. How can we help you today?' },
@@ -29,7 +29,37 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [templateName, setTemplateName] = useState('');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
   const [templateParameters, setTemplateParameters] = useState('');
+  const [metaTemplates, setMetaTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState('');
   const [sending, setSending] = useState(false);
+
+  async function syncMetaTemplates() {
+    if (!workspace?.id) return;
+    setTemplatesLoading(true); setTemplatesError('');
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error('Please sign in again.');
+      const response = await fetch('/api/whatsapp/templates?workspaceId=' + encodeURIComponent(workspace.id), {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Meta templates could not be loaded.');
+      const templates = Array.isArray(body.templates) ? body.templates : [];
+      setMetaTemplates(templates);
+      const firstApproved = templates.find(item => item.status === 'APPROVED' && ['marketing','utility'].includes(item.category));
+      if (firstApproved && !templates.some(item => item.name === templateName && item.language === templateLanguage && item.status === 'APPROVED')) {
+        setTemplateName(firstApproved.name);
+        setTemplateLanguage(firstApproved.language || 'en_US');
+        setCampaignCategory(firstApproved.category);
+      }
+    } catch (error) {
+      setTemplatesError(error.message || 'Meta templates could not be loaded.');
+    } finally { setTemplatesLoading(false); }
+  }
+
+  useEffect(() => { syncMetaTemplates(); }, [workspace?.id]);
   async function sendApprovedTemplate() {
     if (!workspace?.id || !templateName.trim()) { notify('Enter your exact approved Meta template name.'); return; }
     if (!eligibleContacts.length) { notify('No contacts have complete, recorded opt-in evidence in Supabase.'); return; }
@@ -69,11 +99,24 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Send an approved WhatsApp template</h2><p>Live sending uses Meta Cloud API. Only recorded opted-in Supabase contacts are eligible.</p></div></div>
       <div style={{display:'grid',gap:12,maxWidth:720}}>
         <label className="module-label">Campaign category<select value={campaignCategory} onChange={e=>setCampaignCategory(e.target.value)}><option value="marketing">Marketing / Promotional</option><option value="utility">Utility / Transactional</option></select></label>
-        <label className="module-label">Approved Meta template name<input value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder="e.g. november_customer_update"/></label>
-        <label className="module-label">Template language code<input value={templateLanguage} onChange={e=>setTemplateLanguage(e.target.value)} placeholder="en_US"/></label>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+          <label className="module-label" style={{flex:1,minWidth:260}}>Meta-approved template
+            <select value={templateName + '|' + templateLanguage} onChange={e=>{
+              const chosen=metaTemplates.find(item=>item.name+'|'+item.language===e.target.value);
+              if(chosen){setTemplateName(chosen.name);setTemplateLanguage(chosen.language || 'en_US');setCampaignCategory(chosen.category);}
+            }}>
+              <option value="|">Choose a synced approved template</option>
+              {metaTemplates.filter(item=>item.status==='APPROVED' && ['marketing','utility'].includes(item.category)).map(item=><option key={item.name+'|'+item.language} value={item.name+'|'+item.language}>{item.name} · {item.category} · {item.language}</option>)}
+            </select>
+          </label>
+          <button className="button light" type="button" onClick={syncMetaTemplates} disabled={templatesLoading}><RefreshCw size={14}/>{templatesLoading?'Syncing…':'Sync from Meta'}</button>
+        </div>
+        {templatesError&&<p style={{fontSize:12,color:'#b45309',margin:0}}>{templatesError}</p>}
+        <small style={{color:'#68778c'}}>{metaTemplates.length} templates found · {metaTemplates.filter(item=>item.status==='APPROVED').length} approved and sendable. Active/quality-pending in WhatsApp Manager should appear as APPROVED in the API when eligible.</small>
+        <label className="module-label">Template language code<input value={templateLanguage} readOnly/></label>
         <label className="module-label">Template body parameters (optional, in order)<input value={templateParameters} onChange={e=>setTemplateParameters(e.target.value)} placeholder="Example: Arun Kumar|Order 123"/></label><small style={{color:"#68778c"}}>Leave blank for templates without variables. Separate body values with a vertical bar (|).</small>
         <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with complete opt-in evidence and {campaignCategory} consent (or All scope). Maximum 50 recipients per send.</span></div></div>
-        <div><button className="button primary" type="button" disabled={sending || !eligible} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
+        <div><button className="button primary" type="button" disabled={sending || !eligible || !templateName || !metaTemplates.some(item=>item.name===templateName&&item.language===templateLanguage&&item.status==='APPROVED')} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
       </div>
     </section>
     <section className="panel" style={{padding:20}}>
