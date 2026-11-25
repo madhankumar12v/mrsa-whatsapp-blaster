@@ -22,8 +22,9 @@ function readDrafts() {
 export function CampaignsPage({ contacts, notify, workspace }) {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
+  const [campaignCategory, setCampaignCategory] = useState('marketing');
   const [drafts, setDrafts] = useState(readDrafts);
-  const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && ['marketing','utility','all'].includes(c.consentScope) && /^[0-9a-f-]{36}$/i.test(String(c.id)));
+  const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && ['marketing','utility','all'].includes(c.consentScope) && (c.consentScope === 'all' || c.consentScope === campaignCategory) && /^[0-9a-f-]{36}$/i.test(String(c.id)));
   const eligible = eligibleContacts.length;
   const [templateName, setTemplateName] = useState('');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
@@ -39,7 +40,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token;
       if (!token) throw new Error('Please sign in again.');
-      const response = await fetch('/api/whatsapp/send', { method:'POST', headers:{'content-type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({workspaceId:workspace.id,contactIds:targets.map(c=>c.id),templateName:templateName.trim(),language:templateLanguage.trim(),parameters:templateParameters.trim()?templateParameters.split('|').map(value=>value.trim()):[]}) });
+      const response = await fetch('/api/whatsapp/send', { method:'POST', headers:{'content-type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({workspaceId:workspace.id,contactIds:targets.map(c=>c.id),templateName:templateName.trim(),language:templateLanguage.trim(),campaignCategory,parameters:templateParameters.trim()?templateParameters.split('|').map(value=>value.trim()):[]}) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Campaign request failed.');
       const firstFailure=body.results?.find(item=>!item.sent); notify('WhatsApp send completed: '+body.sent+' sent, '+body.failed+' failed.'+(firstFailure?' First issue: '+firstFailure.reason:''));
@@ -48,7 +49,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   }
   function saveDraft(event) {
     event.preventDefault();
-    const next = [{ id: Date.now(), name: name.trim(), message: message.trim(), audience: eligible, created: new Date().toISOString(), status: 'Draft' }, ...drafts];
+    const next = [{ id: Date.now(), name: name.trim(), message: message.trim(), category: campaignCategory, audience: eligible, created: new Date().toISOString(), status: 'Draft' }, ...drafts];
     setDrafts(next); localStorage.setItem('mrsa-campaign-drafts-v1', JSON.stringify(next));
     setName(''); setMessage(''); notify('Campaign draft saved.');
   }
@@ -67,10 +68,11 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     <section className="panel" style={{padding:20,marginBottom:18}}>
       <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Send an approved WhatsApp template</h2><p>Live sending uses Meta Cloud API. Only recorded opted-in Supabase contacts are eligible.</p></div></div>
       <div style={{display:'grid',gap:12,maxWidth:720}}>
+        <label className="module-label">Campaign category<select value={campaignCategory} onChange={e=>setCampaignCategory(e.target.value)}><option value="marketing">Marketing / Promotional</option><option value="utility">Utility / Transactional</option></select></label>
         <label className="module-label">Approved Meta template name<input value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder="e.g. november_customer_update"/></label>
         <label className="module-label">Template language code<input value={templateLanguage} onChange={e=>setTemplateLanguage(e.target.value)} placeholder="en_US"/></label>
         <label className="module-label">Template body parameters (optional, in order)<input value={templateParameters} onChange={e=>setTemplateParameters(e.target.value)} placeholder="Example: Arun Kumar|Order 123"/></label><small style={{color:"#68778c"}}>Leave blank for templates without variables. Separate body values with a vertical bar (|).</small>
-        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with opt-in status, date, source, evidence and matching category. Maximum 50 recipients per send.</span></div></div>
+        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with complete opt-in evidence and {campaignCategory} consent (or All scope). Maximum 50 recipients per send.</span></div></div>
         <div><button className="button primary" type="button" disabled={sending || !eligible} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
       </div>
     </section>
@@ -79,13 +81,13 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <form onSubmit={saveDraft} style={{display:'grid',gap:12,maxWidth:720}}>
         <label className="module-label">Campaign name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. November customer update"/></label>
         <label className="module-label">Message<textarea required rows="5" value={message} onChange={e=>setMessage(e.target.value)} placeholder="Write your WhatsApp message..."/></label>
-        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>Consent protection</b><span>Only {eligible} opted-in contacts are eligible. Pending and opted-out contacts are excluded.</span></div></div>
+        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>Consent protection</b><span>Only {eligible} contacts with matching {campaignCategory} consent are eligible. Pending, opted-out and other-category contacts are excluded.</span></div></div>
         <div><button className="button primary" type="submit"><Plus size={15}/> Save campaign draft</button></div>
       </form>
     </section>
     <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2>Saved campaign drafts</h2><p>Drafts stored on this device.</p></div><span className="count">{drafts.length} drafts</span></div>
       <div className="table-scroll"><table><thead><tr><th>CAMPAIGN</th><th>ELIGIBLE AUDIENCE</th><th>CREATED</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>
-        {drafts.map(item=><tr key={item.id}><td><b>{item.name}</b></td><td>{item.audience}</td><td>{new Date(item.created).toLocaleDateString('en-IN')}</td><td><span className="status pending">Draft</span></td><td><button className="more" onClick={()=>{setName(item.name);setMessage(item.message);window.scrollTo({top:0,behavior:'smooth'});}}>Edit</button><button className="more" onClick={()=>removeDraft(item.id)}>Delete</button></td></tr>)}
+        {drafts.map(item=><tr key={item.id}><td><b>{item.name}</b></td><td>{item.audience} ({item.category || 'Unspecified'})</td><td>{new Date(item.created).toLocaleDateString('en-IN')}</td><td><span className="status pending">Draft</span></td><td><button className="more" onClick={()=>{setName(item.name);setMessage(item.message);window.scrollTo({top:0,behavior:'smooth'});}}>Edit</button><button className="more" onClick={()=>removeDraft(item.id)}>Delete</button></td></tr>)}
       </tbody></table>{drafts.length===0&&<div className="empty"><Megaphone size={25}/><b>No campaign drafts</b><span>Create a draft above to get started.</span></div>}</div>
     </section>
     <div className="compliance"><Activity size={17}/><div><b>Sending is not enabled yet</b><span>Connect and configure the official WhatsApp Business Platform before sending real campaigns. Never message contacts without valid consent.</span></div></div>
