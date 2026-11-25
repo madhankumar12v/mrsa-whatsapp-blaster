@@ -137,15 +137,42 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   </>;
 }
 
-export function TemplatesPage({ notify }) {
+export function TemplatesPage({ notify, workspace }) {
   const [selected, setSelected] = useState(starterTemplates[0].name);
+  const [metaTemplates, setMetaTemplates] = useState([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState('');
   const current = starterTemplates.find(item => item.name === selected) || starterTemplates[0];
+
+  async function syncMetaTemplates() {
+    if (!workspace?.id) return;
+    setSyncing(true); setSyncError('');
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error('Please sign in again.');
+      const response = await fetch('/api/whatsapp/templates?workspaceId=' + encodeURIComponent(workspace.id), { headers: { Authorization: 'Bearer ' + token } });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Meta templates could not be loaded.');
+      setMetaTemplates(Array.isArray(body.templates) ? body.templates : []);
+    } catch (error) { setSyncError(error.message || 'Meta templates could not be loaded.'); }
+    finally { setSyncing(false); }
+  }
+
+  useEffect(() => { syncMetaTemplates(); }, [workspace?.id]);
   async function copy() {
     try { await navigator.clipboard.writeText(current.body); notify('Template copied.'); }
     catch { notify('Copy is unavailable in this browser.'); }
   }
   return <>
-    <PageHead eyebrow="MESSAGE LIBRARY" title="Templates" description="Browse starter messages and copy a template to customize."/>
+    <PageHead eyebrow="MESSAGE LIBRARY" title="Templates" description="Sync approved WhatsApp templates from Meta and browse starter message examples."/>
+    <section className="panel" style={{marginBottom:18}}><div className="panel-head"><div><h2>Meta WhatsApp templates</h2><p>Live templates retrieved securely from the connected WhatsApp Business Account.</p></div><button className="button light" onClick={syncMetaTemplates} disabled={syncing}><RefreshCw size={14}/>{syncing?'Syncing…':'Sync from Meta'}</button></div>
+      {syncError&&<p style={{padding:'0 20px',fontSize:12,color:'#b45309'}}>{syncError}</p>}
+      <div className="table-scroll"><table><thead><tr><th>TEMPLATE NAME</th><th>CATEGORY</th><th>LANGUAGE</th><th>STATUS</th><th>QUALITY</th></tr></thead><tbody>
+        {metaTemplates.map(item=><tr key={item.name+'|'+item.language}><td><b>{item.name}</b></td><td>{item.category||'—'}</td><td>{item.language||'—'}</td><td><span className={'status '+(item.status==='APPROVED'?'active':'pending')}>{item.status||'Unknown'}</span></td><td>{item.quality||'—'}</td></tr>)}
+      </tbody></table>{metaTemplates.length===0&&!syncing&&<div className="empty"><MessageCircle size={25}/><b>No Meta templates loaded</b><span>Use Sync from Meta to retrieve templates for this WhatsApp Business Account.</span></div>}</div>
+      <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>{metaTemplates.length} templates · {metaTemplates.filter(item=>item.status==='APPROVED').length} approved · only approved Marketing and Utility templates can be sent from Campaigns.</div>
+    </section>
     <section className="panel"><div className="panel-head"><div><h2>Starter templates</h2><p>Examples for drafting. These are not approved WhatsApp API templates.</p></div><span className="count">{starterTemplates.length} templates</span></div>
       <div className="module-grid">{starterTemplates.map(item=><button key={item.name} className="stat template-card" onClick={()=>setSelected(item.name)} aria-pressed={selected===item.name}><div className="stat-label">{item.category}<MessageCircle size={16}/></div><strong>{item.name}</strong><small>{item.body}</small></button>)}</div>
     </section>
