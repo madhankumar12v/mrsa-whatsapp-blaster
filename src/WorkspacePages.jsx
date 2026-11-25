@@ -101,7 +101,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         <label className="module-label">Campaign category<select value={campaignCategory} onChange={e=>setCampaignCategory(e.target.value)}><option value="marketing">Marketing / Promotional</option><option value="utility">Utility / Transactional</option></select></label>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
           <label className="module-label" style={{flex:1,minWidth:260}}>Meta-approved template
-            <select value={templateName + '|' + templateLanguage} onChange={e=>{
+            <select value={templateName ? templateName + '|' + templateLanguage : '|'} onChange={e=>{
               const chosen=metaTemplates.find(item=>item.name+'|'+item.language===e.target.value);
               if(chosen){setTemplateName(chosen.name);setTemplateLanguage(chosen.language || 'en_US');setCampaignCategory(chosen.category);}
             }}>
