@@ -20,5 +20,10 @@ jobs:
         run: npm install
       - name: Validate campaign scheduler Worker syntax
         run: node --check workers/campaign-scheduler/index.js
+      - name: Validate workspace API syntax
+        run: |
+          node --check functions/api/workspace/team.js
+          node --check functions/api/workspace/health.js
+          node --check functions/api/whatsapp/webhook.js
       - name: Build production bundle
         run: npm run build
