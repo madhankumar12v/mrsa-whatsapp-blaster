@@ -27,31 +27,48 @@ export async function onRequestPost({ request, env }) {
     if (templateCategory !== campaignCategory) return reply({ error: "Campaign category does not match the approved Meta template category (" + templateCategory + "). No messages were sent." }, 400);
     if (!["marketing", "utility"].includes(templateCategory)) return reply({ error: "This campaign template category is not supported by the consent guard." }, 400);
 
+    const contactRows = await db(env, "contacts?select=id,full_name,phone,consent_status,consent_at,consent_source,consent_evidence,consent_scope&workspace_id=eq." + encodeURIComponent(workspaceId) + "&id=in.(" + contactIds.join(",") + ")");
+    const contactById = new Map((contactRows || []).map(contact => [contact.id, contact]));
     const results = [];
+    const recipients = [];
+    const seenPhones = new Set();
     for (const contactId of contactIds) {
-      const contacts = await db(env, "contacts?select=id,full_name,phone,consent_status,consent_at,consent_source,consent_evidence,consent_scope&workspace_id=eq." + encodeURIComponent(workspaceId) + "&id=eq." + encodeURIComponent(contactId) + "&limit=1");
-      const contact = contacts?.[0];
-      if (!contact) {
-        results.push({ contactId, sent: false, reason: "Contact was not found in this workspace." });
-        continue;
-      }
-      if (contact.consent_status !== "opted_in") {
-        results.push({ contactId, sent: false, reason: "Contact does not have an active opt-in." });
-        continue;
-      }
+      const contact = contactById.get(contactId);
+      if (!contact) { results.push({ contactId, sent: false, reason: "Contact was not found in this workspace." }); continue; }
+      if (contact.consent_status !== "opted_in") { results.push({ contactId, sent: false, reason: "Contact does not have an active opt-in." }); continue; }
       if (!String(contact.consent_at || "").trim() || !String(contact.consent_source || "").trim() || !String(contact.consent_evidence || "").trim() || !["marketing", "utility", "all"].includes(contact.consent_scope)) {
-        results.push({ contactId, sent: false, reason: "Consent record is incomplete. Add the original consent date, source, evidence and category." });
-        continue;
+        results.push({ contactId, sent: false, reason: "Consent record is incomplete. Add the original consent date, source, evidence and category." }); continue;
       }
       if (contact.consent_scope !== "all" && contact.consent_scope !== templateCategory) {
-        results.push({ contactId, sent: false, reason: "Consent category mismatch: this template is " + templateCategory + ", but the contact consent covers " + contact.consent_scope + "." });
-        continue;
+        results.push({ contactId, sent: false, reason: "Consent category mismatch: this template is " + templateCategory + ", but the contact consent covers " + contact.consent_scope + "." }); continue;
       }
       const to = normalizeWhatsAppPhone(contact.phone);
-      if (!to) {
-        results.push({ contactId, phone: contact.phone, sent: false, reason: "Invalid phone number. Enter a valid international number; Indian 10-digit mobile numbers are automatically prefixed with 91." });
-        continue;
-      }
+      if (!to) { results.push({ contactId, phone: contact.phone, sent: false, reason: "Invalid phone number. Enter a valid international number; Indian 10-digit mobile numbers are automatically prefixed with 91." }); continue; }
+      if (seenPhones.has(to)) { results.push({ contactId, phone: to, sent: false, reason: "Duplicate recipient number was excluded to prevent sending the same campaign twice." }); continue; }
+      seenPhones.add(to);
+      recipients.push({ contactId, contact, to });
+    }
+
+    if (!recipients.length) return reply({ requested: contactIds.length, sent: 0, failed: results.length, results });
+    let quota;
+    try {
+      const quotaRows = await db(env, "rpc/reserve_whatsapp_message_usage", {
+        method: "POST",
+        body: JSON.stringify({ p_workspace_id: workspaceId, p_message_count: recipients.length, p_actor_user_id: user.id })
+      });
+      quota = Array.isArray(quotaRows) ? quotaRows[0] : quotaRows;
+    } catch (error) {
+      console.error("Could not reserve WhatsApp monthly usage", error?.message || error);
+      return reply({ error: "Monthly usage could not be checked. No messages were sent. Apply the campaign protection and usage migration, then try again." }, 503);
+    }
+    if (!quota?.allowed) {
+      return reply({
+        error: "Monthly WhatsApp message limit reached. Upgrade or contact the workspace administrator.",
+        usage: { used: quota?.used ?? null, limit: quota?.monthly_limit ?? null, remaining: quota?.remaining ?? 0 }
+      }, 429);
+    }
+
+    for (const { contactId, contact, to } of recipients) {
       const components = parameters.length ? [{ type: "body", parameters: parameters.map(text => ({ type: "text", text })) }] : [];
       let sent;
       try {
@@ -97,6 +114,14 @@ export async function onRequestPost({ request, env }) {
       } catch { logSaved = false; }
       results.push({ contactId, phone: to, sent: true, status: "accepted", messageId, logSaved, logWarning: logSaved ? null : "Meta accepted the message, but its delivery log could not be saved." });
     }
-    return reply({ requested: contactIds.length, sent: results.filter(r => r.sent).length, failed: results.filter(r => !r.sent).length, results });
+    const acceptedCount = results.filter(item => item.sent).length;
+    const failedCount = results.filter(item => !item.sent).length;
+    try {
+      await db(env, "rpc/record_whatsapp_message_results", {
+        method: "POST",
+        body: JSON.stringify({ p_workspace_id: workspaceId, p_accepted: acceptedCount, p_failed: failedCount })
+      });
+    } catch (error) { console.error("Could not update WhatsApp usage result totals", error?.message || error); }
+    return reply({ requested: contactIds.length, sent: acceptedCount, failed: failedCount, uniqueRecipients: recipients.length, usage: { used: quota.used, limit: quota.monthly_limit, remaining: quota.remaining }, results });
   } catch (error) { return errorResponse(error); }
 }
