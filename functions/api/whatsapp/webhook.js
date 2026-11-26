@@ -45,9 +45,22 @@ export async function onRequestPost({ request, env }) {
             update.meta_error_details = errors.map(item => item.details).filter(Boolean).join(" | ");
             console.error("WhatsApp delivery failed", { messageId: status.id, recipientId: status.recipient_id || null, errors });
           }
+          const matchedLogs = await db(env, "whatsapp_message_logs?select=workspace_id&meta_message_id=eq." + encodeURIComponent(status.id) + "&limit=1");
           await db(env, "whatsapp_message_logs?meta_message_id=eq." + encodeURIComponent(status.id), {
             method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(update)
           });
+          if (matchedLogs?.[0]?.workspace_id) {
+            await db(env, "webhook_events", {
+              method: "POST", headers: { Prefer: "return=minimal" },
+              body: JSON.stringify({
+                workspace_id: matchedLogs[0].workspace_id,
+                event_type: "whatsapp.message_status." + String(status.status || "unknown"),
+                status: "processed", message_count: 1,
+                details: { meta_message_id: status.id },
+                received_at: new Date().toISOString(), processed_at: new Date().toISOString()
+              })
+            });
+          }
         } catch (error) {
           console.error("WhatsApp status webhook could not be persisted; returning an error so Meta can retry.", { messageId: status.id, status: status.status || "unknown", error: error?.message || "Database update failed" });
           return reply({ error: "Delivery status could not be saved. Please retry this webhook." }, 500);
