@@ -29,6 +29,7 @@ export default function App({currentUser,onLogout,workspace}){
   const [contacts,setContacts]=useState([]);
   const [contactsLoading,setContactsLoading]=useState(true);
   const [lastSend,setLastSend]=useState(readLastSend);
+  const [dashboardLogs,setDashboardLogs]=useState([]);
   const [query,setQuery]=useState('');
   const [group,setGroup]=useState('All groups');
   const [status,setStatus]=useState('All consent');
@@ -54,6 +55,31 @@ export default function App({currentUser,onLogout,workspace}){
     loadWorkspaceContacts();
     return ()=>{alive=false;};
   },[workspace?.id]);
+  useEffect(()=>{
+    let alive=true;
+    async function loadDashboardDelivery(){
+      if(!workspace?.id){setDashboardLogs([]);return;}
+      const {data,error}=await supabase.from('whatsapp_message_logs')
+        .select('meta_message_id,status,error_message,status_updated_at,created_at')
+        .eq('workspace_id',workspace.id)
+        .order('created_at',{ascending:false})
+        .limit(300);
+      if(alive&&!error)setDashboardLogs(Array.isArray(data)?data:[]);
+    }
+    loadDashboardDelivery();
+    const timer=window.setInterval(()=>{
+      if(document.visibilityState==='visible')loadDashboardDelivery();
+    },15000);
+    return ()=>{alive=false;window.clearInterval(timer);};
+  },[workspace?.id]);
+  const dashboardLastSend=useMemo(()=>{
+    if(!lastSend)return null;
+    const byMessageId=new Map(dashboardLogs.filter(row=>row.meta_message_id).map(row=>[row.meta_message_id,row]));
+    return {...lastSend,results:(lastSend.results||[]).map(item=>{
+      const log=item.messageId?byMessageId.get(item.messageId):null;
+      return {...item,liveStatus:log?.status||(item.sent?'accepted':'failed'),liveDetails:log?.error_message||null,liveUpdatedAt:log?.status_updated_at||log?.created_at||null};
+    })};
+  },[lastSend,dashboardLogs]);
   const groups=['All groups',...new Set(contacts.map(c=>c.group))];
   const visible=useMemo(()=>contacts.filter(c=>
     [c.name,c.phone,c.group].join(' ').toLowerCase().includes(query.toLowerCase()) &&
@@ -164,15 +190,15 @@ export default function App({currentUser,onLogout,workspace}){
             <div className="stat"><div className="stat-label">Subscription <span className="stat-icon blue"><CreditCard size={17}/></span></div><strong>₹299</strong><small>Monthly plan after 30-day trial</small></div>
           </section>
           <section className="panel" style={{marginBottom:18}}>
-            <div className="panel-head"><div><h2>WhatsApp campaign results</h2><p>{lastSend ? (lastSend.templateName+' · '+lastSend.language+' · '+new Date(lastSend.createdAt).toLocaleString('en-IN')) : 'Your latest recipient-level send status will appear here after a campaign.'}</p></div><div className="head-actions"><button className="button light" onClick={()=>setPage('Campaigns')}>Open Campaigns</button></div></div>
-            {lastSend ? <>
+            <div className="panel-head"><div><h2>WhatsApp campaign results</h2><p>{dashboardLastSend ? (dashboardLastSend.templateName+' · '+dashboardLastSend.language+' · '+new Date(dashboardLastSend.createdAt).toLocaleString('en-IN')) : 'Your latest recipient-level send status will appear here after a campaign.'}</p></div><div className="head-actions"><button className="button light" onClick={()=>setPage('Campaigns')}>Open Campaigns</button></div></div>
+            {dashboardLastSend ? <>
               <div className="stats" style={{padding:'0 20px 16px'}}>
-                <div className="stat"><div className="stat-label">Requested</div><strong>{lastSend.requested ?? lastSend.results?.length ?? 0}</strong><small>Recipients in last run</small></div>
-                <div className="stat"><div className="stat-label">Accepted by Meta</div><strong>{lastSend.sent ?? 0}</strong><small>API accepted · not delivery-confirmed</small></div>
-                <div className="stat"><div className="stat-label">Failed</div><strong>{lastSend.failed ?? 0}</strong><small>Rejected or not sent</small></div>
+                <div className="stat"><div className="stat-label">Requested</div><strong>{dashboardLastSend.requested ?? dashboardLastSend.results?.length ?? 0}</strong><small>Recipients in last run</small></div>
+                <div className="stat"><div className="stat-label">Delivered</div><strong>{dashboardLastSend.results.filter(item=>['delivered','read'].includes(item.liveStatus)).length}</strong><small>Confirmed by Meta webhook</small></div>
+                <div className="stat"><div className="stat-label">Failed</div><strong>{dashboardLastSend.results.filter(item=>item.liveStatus==='failed').length}</strong><small>Send or delivery failures</small></div>
               </div>
               <div className="table-scroll"><table><thead><tr><th>CONTACT</th><th>WHATSAPP NUMBER</th><th>RESULT</th><th>DETAILS</th><th>META MESSAGE ID</th></tr></thead><tbody>
-                {(lastSend.results || []).map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);return <tr key={item.contactId||index}><td><b>{item.contactName || contact?.name || 'Contact record'}</b></td><td>{item.phone || contact?.phone || '—'}</td><td><span className={'status '+(item.sent?'active':'pending')}>{item.sent?'Accepted by Meta':'Failed'}</span></td><td>{item.sent?'Request accepted by Meta; delivery is not confirmed.':(item.reason || 'Meta rejected this message.')}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
+                {(dashboardLastSend.results || []).map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);return <tr key={item.contactId||index}><td><b>{item.contactName || contact?.name || 'Contact record'}</b></td><td>{item.phone || contact?.phone || '—'}</td><td><span className={'status '+(item.sent?'active':'pending')}>{item.liveStatus==='read'?'Read':item.liveStatus==='delivered'?'Delivered':item.liveStatus==='accepted'?'Accepted by Meta':'Failed'}</span></td><td>{item.liveDetails || (item.liveStatus==='read'?'Read receipt received.':item.liveStatus==='delivered'?'Delivered to recipient.':item.liveStatus==='accepted'?'Accepted by Meta; delivery is not confirmed.':(item.reason || 'Meta rejected this message.'))}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
               </tbody></table></div>
               <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>Accepted by Meta does not mean delivered or read. Delivery confirmation requires WhatsApp status webhooks.</div>
             </> : <div className="empty"><MessageCircle size={25}/><b>No WhatsApp campaign results yet</b><span>Send a campaign from Campaigns to see each number's result here.</span></div>}
