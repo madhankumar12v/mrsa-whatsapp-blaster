@@ -70,7 +70,12 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       const response = await fetch('/api/whatsapp/send', { method:'POST', headers:{'content-type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({workspaceId:workspace.id,contactIds:targets.map(c=>c.id),templateName:templateName.trim(),language:templateLanguage.trim(),campaignCategory,parameters:templateParameters.trim()?templateParameters.split('|').map(value=>value.trim()):[]}) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Campaign request failed.');
-      const report = { createdAt: new Date().toISOString(), templateName: templateName.trim(), language: templateLanguage.trim(), requested: body.requested || targets.length, sent: body.sent || 0, failed: body.failed || 0, results: Array.isArray(body.results) ? body.results : [] };
+      const contactById = new Map(targets.map(contact => [contact.id, contact]));
+      const results = (Array.isArray(body.results) ? body.results : []).map(item => {
+        const contact = contactById.get(item.contactId);
+        return { ...item, contactName: contact?.name || item.contactName || 'Contact record', phone: contact?.phone || item.phone || '' };
+      });
+      const report = { createdAt: new Date().toISOString(), templateName: templateName.trim(), language: templateLanguage.trim(), requested: body.requested ?? targets.length, sent: body.sent ?? 0, failed: body.failed ?? 0, results };
       setLastSend(report); localStorage.setItem('mrsa-last-send-v1', JSON.stringify(report));
       const firstFailure=report.results.find(item=>!item.sent); notify('WhatsApp send completed: '+report.sent+' accepted by Meta, '+report.failed+' failed.'+(firstFailure?' First issue: '+firstFailure.reason:''));
     } catch (error) { notify(error.message || 'WhatsApp send failed.'); }
@@ -121,7 +126,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     {lastSend && <section className="panel" style={{marginBottom:18}}>
       <div className="panel-head"><div><h2>Last WhatsApp send results</h2><p>{lastSend.templateName} · {lastSend.language} · {new Date(lastSend.createdAt).toLocaleString('en-IN')} · {lastSend.requested} requested</p></div><span className="count">{lastSend.sent} accepted · {lastSend.failed} failed</span></div>
       <div className="table-scroll"><table><thead><tr><th>CONTACT</th><th>PHONE</th><th>RESULT</th><th>DETAILS</th><th>META MESSAGE ID</th></tr></thead><tbody>
-        {lastSend.results.map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);return <tr key={item.contactId||index}><td><b>{contact?.name || 'Contact record'}</b></td><td>{contact?.phone || '—'}</td><td><span className={'status '+(item.sent?'active':'pending')}>{item.sent?'Accepted by Meta':'Failed'}</span></td><td>{item.sent?'Message request accepted by Meta. Delivery status is not confirmed yet.':(item.reason || 'Meta rejected this message.')}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
+        {lastSend.results.map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);return <tr key={item.contactId||index}><td><b>{item.contactName || contact?.name || 'Contact record'}</b></td><td>{item.phone || contact?.phone || '—'}</td><td><span className={'status '+(item.sent?'active':'pending')}>{item.sent?'Accepted by Meta':'Failed'}</span></td><td>{item.sent?'Message request accepted by Meta. Delivery status is not confirmed yet.':(item.reason || 'Meta rejected this message.')}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
       </tbody></table></div>
       <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>“Accepted by Meta” means the API accepted the message request; it does not prove delivery or reading. Final delivery requires a WhatsApp status webhook.</div>
     </section>}
