@@ -79,6 +79,14 @@ export function errorResponse(error) {
 }
 
 export function cleanPhone(value) { return String(value || "").replace(/[^0-9]/g, ""); }
+export function normalizeWhatsAppPhone(value) {
+  let phone = cleanPhone(value);
+  if (phone.length === 10) phone = "91" + phone;
+  if (phone.startsWith("0") && phone.length === 11) phone = "91" + phone.slice(1);
+  if (phone.startsWith("0091") && phone.length === 14) phone = phone.slice(2);
+  if (phone.length < 8 || phone.length > 15 || phone.startsWith("0")) return null;
+  return phone;
+}
 
 export async function graphRequest(env, path, init = {}) {
   const version = env.WHATSAPP_API_VERSION || "v27.0";
@@ -92,6 +100,10 @@ export async function graphRequest(env, path, init = {}) {
     const error = new Error("META_API_ERROR");
     error.meta = data?.error?.message || "Meta API request failed";
     error.code = data?.error?.code || response.status;
+    error.subcode = data?.error?.error_subcode || null;
+    error.type = data?.error?.type || null;
+    error.fbtraceId = data?.error?.fbtrace_id || null;
+    error.details = data?.error?.error_data?.details || null;
     throw error;
   }
   return data;
