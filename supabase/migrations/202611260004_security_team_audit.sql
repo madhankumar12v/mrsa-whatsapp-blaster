@@ -131,3 +131,7 @@ $$;
 drop trigger if exists manual_payment_audit_trigger on public.manual_payment_submissions;
 create trigger manual_payment_audit_trigger after insert or update on public.manual_payment_submissions
  for each row execute function public.audit_manual_payment_changes();
+
+drop policy if exists "Workspace admins can read team profiles" on public.profiles;
+create policy "Workspace admins can read team profiles" on public.profiles for select to authenticated
+ using (exists(select 1 from public.workspace_memberships wm where wm.user_id=profiles.id and wm.workspace_id in (select mine.workspace_id from public.workspace_memberships mine where mine.user_id=(select auth.uid()) and mine.role='admin')));
