@@ -1,0 +1,6 @@
+name = "mrsa-campaign-scheduler"
+main = "index.js"
+compatibility_date = "2026-11-26"
+
+[triggers]
+crons = ["* * * * *"]
