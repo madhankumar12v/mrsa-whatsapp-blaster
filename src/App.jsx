@@ -29,6 +29,7 @@ export default function App({currentUser,onLogout,workspace}){
   const [contacts,setContacts]=useState([]);
   const [contactsLoading,setContactsLoading]=useState(true);
   const [lastSend,setLastSend]=useState(readLastSend);
+  const [dashboardLogs,setDashboardLogs]=useState([]);
   const [query,setQuery]=useState('');
   const [group,setGroup]=useState('All groups');
   const [status,setStatus]=useState('All consent');
@@ -38,7 +39,8 @@ export default function App({currentUser,onLogout,workspace}){
   const [toast,setToast]=useState('');
   const [form,setForm]=useState({name:'',phone:'',group:'Customers',consent:'Pending',consentSource:'',consentEvidence:'',consentScope:'',consentAt:''});
   const fileRef=useRef(null);
-  const save=items=>{setContacts(items);localStorage.setItem('mrsa-contacts-v1',JSON.stringify(items));};
+  const save=items=>{setContacts(items);};
+  useEffect(()=>{ try { localStorage.removeItem('mrsa-contacts-v1'); } catch {} },[]);
   useEffect(()=>{
     let alive=true;
     async function loadWorkspaceContacts(){
@@ -47,12 +49,37 @@ export default function App({currentUser,onLogout,workspace}){
       const {data,error}=await supabase.from('contacts').select('id,full_name,phone,group_name,consent_status,consent_source,consent_evidence,consent_scope,consent_at,opted_out_at,updated_at').eq('workspace_id',workspace.id).order('created_at',{ascending:false}).limit(2000);
       if(!alive)return;
       if(error){notify('Contacts could not be loaded from Supabase: '+error.message);setContacts([]);}
-      else {const rows=(data||[]).map(mapContact);setContacts(rows);localStorage.setItem('mrsa-contacts-v1',JSON.stringify(rows));}
+      else {const rows=(data||[]).map(mapContact);setContacts(rows);}
       setContactsLoading(false);
     }
     loadWorkspaceContacts();
     return ()=>{alive=false;};
   },[workspace?.id]);
+  useEffect(()=>{
+    let alive=true;
+    async function loadDashboardDelivery(){
+      if(!workspace?.id){setDashboardLogs([]);return;}
+      const {data,error}=await supabase.from('whatsapp_message_logs')
+        .select('meta_message_id,status,error_message,status_updated_at,created_at')
+        .eq('workspace_id',workspace.id)
+        .order('created_at',{ascending:false})
+        .limit(300);
+      if(alive&&!error)setDashboardLogs(Array.isArray(data)?data:[]);
+    }
+    loadDashboardDelivery();
+    const timer=window.setInterval(()=>{
+      if(document.visibilityState==='visible')loadDashboardDelivery();
+    },15000);
+    return ()=>{alive=false;window.clearInterval(timer);};
+  },[workspace?.id]);
+  const dashboardLastSend=useMemo(()=>{
+    if(!lastSend)return null;
+    const byMessageId=new Map(dashboardLogs.filter(row=>row.meta_message_id).map(row=>[row.meta_message_id,row]));
+    return {...lastSend,results:(lastSend.results||[]).map(item=>{
+      const log=item.messageId?byMessageId.get(item.messageId):null;
+      return {...item,liveStatus:log?.status||(item.sent?'accepted':'failed'),liveDetails:log?.error_message||null,liveUpdatedAt:log?.status_updated_at||log?.created_at||null};
+    })};
+  },[lastSend,dashboardLogs]);
   const groups=['All groups',...new Set(contacts.map(c=>c.group))];
   const visible=useMemo(()=>contacts.filter(c=>
     [c.name,c.phone,c.group].join(' ').toLowerCase().includes(query.toLowerCase()) &&
@@ -142,6 +169,15 @@ export default function App({currentUser,onLogout,workspace}){
     const a=document.createElement('a');a.href=url;a.download='mrsa-contacts.csv';a.click();URL.revokeObjectURL(url);
   }
 
+  function exportSelectedCsv(){
+    const selectedContacts=contacts.filter(contact=>selected.includes(contact.id));
+    if(!selectedContacts.length){notify('Select at least one contact to export.');return;}
+    const rows=[['Name','Phone','Group','Consent','Consent Category','Consent Date','Consent Source','Consent Evidence'],...selectedContacts.map(c=>[c.name,c.phone,c.group,c.consent,c.consentScope,c.consentAt,c.source,c.consentEvidence])];
+    const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\\n');
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    const a=document.createElement('a');a.href=url;a.download='mrsa-selected-contacts.csv';a.click();URL.revokeObjectURL(url);
+  }
+
   return <div className="shell">
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark"><Zap size={21} fill="currentColor"/></div><div><b>MrSa<span>Blaster</span></b><small>MRSA SOLUTIONS</small></div></div>
@@ -149,7 +185,7 @@ export default function App({currentUser,onLogout,workspace}){
       <div className="nav-label">WORKSPACE</div>
       <nav>{nav.map(item=><button key={item.name} className={'nav-item '+(page===item.name?'active':'')} onClick={()=>setPage(item.name)}><item.icon size={18}/>{item.name}{item.name==='Contacts'&&<span className="nav-count">{contacts.length}</span>}</button>)}</nav>
       <div className="nav-label preferences">PREFERENCES</div><button className={'nav-item '+(page==='WhatsApp API'?'active':'')} onClick={()=>setPage('WhatsApp API')}><MessageCircle size={18}/>WhatsApp API</button><button className={'nav-item '+(page==='Settings'?'active':'')} onClick={()=>setPage('Settings')}><Settings size={18}/>Settings</button>
-      <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18}/><b>Need a hand?</b><p>Setup guide and product help.</p><button onClick={()=>notify('Setup guide is coming in a later build.')}>View guide <ArrowUpRight size={13}/></button></div><div className="profile"><div className="profile-avatar">{(currentUser?.name || "U").split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase()}</div><div><b>{currentUser?.name || "Account"}</b><small>{currentUser?.email || currentUser?.role}</small></div><button className="profile-logout" onClick={onLogout} title="Sign out"><LogOut size={16}/></button></div></div>
+      <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18}/><b>Need a hand?</b><p>Setup guide and product help.</p><button onClick={()=>setPage('WhatsApp API')}>Open setup guide <ArrowUpRight size={13}/></button></div><div className="profile"><div className="profile-avatar">{(currentUser?.name || "U").split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase()}</div><div><b>{currentUser?.name || "Account"}</b><small>{currentUser?.email || currentUser?.role}</small></div><button className="profile-logout" onClick={onLogout} title="Sign out"><LogOut size={16}/></button></div></div>
     </aside>
     <main className="main">
       <header className="topbar"><div className="crumb">Workspace <span>/</span> <b>{page}</b></div><div className="top-actions"><div className="demo-pill"><i/> Supabase workspace</div><button className="icon-button" onClick={()=>notify('You are all caught up.')} aria-label="Notifications"><Bell size={18}/></button><div className="top-avatar">{(currentUser?.name || "U").split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase()}</div></div></header>
@@ -163,15 +199,15 @@ export default function App({currentUser,onLogout,workspace}){
             <div className="stat"><div className="stat-label">Subscription <span className="stat-icon blue"><CreditCard size={17}/></span></div><strong>₹299</strong><small>Monthly plan after 30-day trial</small></div>
           </section>
           <section className="panel" style={{marginBottom:18}}>
-            <div className="panel-head"><div><h2>WhatsApp campaign results</h2><p>{lastSend ? (lastSend.templateName+' · '+lastSend.language+' · '+new Date(lastSend.createdAt).toLocaleString('en-IN')) : 'Your latest recipient-level send status will appear here after a campaign.'}</p></div><div className="head-actions"><button className="button light" onClick={()=>setPage('Campaigns')}>Open Campaigns</button></div></div>
-            {lastSend ? <>
+            <div className="panel-head"><div><h2>WhatsApp campaign results</h2><p>{dashboardLastSend ? (dashboardLastSend.templateName+' · '+dashboardLastSend.language+' · '+new Date(dashboardLastSend.createdAt).toLocaleString('en-IN')) : 'Your latest recipient-level send status will appear here after a campaign.'}</p></div><div className="head-actions"><button className="button light" onClick={()=>setPage('Campaigns')}>Open Campaigns</button></div></div>
+            {dashboardLastSend ? <>
               <div className="stats" style={{padding:'0 20px 16px'}}>
-                <div className="stat"><div className="stat-label">Requested</div><strong>{lastSend.requested ?? lastSend.results?.length ?? 0}</strong><small>Recipients in last run</small></div>
-                <div className="stat"><div className="stat-label">Accepted by Meta</div><strong>{lastSend.sent ?? 0}</strong><small>API accepted · not delivery-confirmed</small></div>
-                <div className="stat"><div className="stat-label">Failed</div><strong>{lastSend.failed ?? 0}</strong><small>Rejected or not sent</small></div>
+                <div className="stat"><div className="stat-label">Requested</div><strong>{dashboardLastSend.requested ?? dashboardLastSend.results?.length ?? 0}</strong><small>Recipients in last run</small></div>
+                <div className="stat"><div className="stat-label">Delivered</div><strong>{dashboardLastSend.results.filter(item=>['delivered','read'].includes(item.liveStatus)).length}</strong><small>Confirmed by Meta webhook</small></div>
+                <div className="stat"><div className="stat-label">Failed</div><strong>{dashboardLastSend.results.filter(item=>item.liveStatus==='failed').length}</strong><small>Send or delivery failures</small></div>
               </div>
               <div className="table-scroll"><table><thead><tr><th>CONTACT</th><th>WHATSAPP NUMBER</th><th>RESULT</th><th>DETAILS</th><th>META MESSAGE ID</th></tr></thead><tbody>
-                {(lastSend.results || []).map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);return <tr key={item.contactId||index}><td><b>{item.contactName || contact?.name || 'Contact record'}</b></td><td>{item.phone || contact?.phone || '—'}</td><td><span className={'status '+(item.sent?'active':'pending')}>{item.sent?'Accepted by Meta':'Failed'}</span></td><td>{item.sent?'Request accepted by Meta; delivery is not confirmed.':(item.reason || 'Meta rejected this message.')}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
+                {(dashboardLastSend.results || []).map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);return <tr key={item.contactId||index}><td><b>{item.contactName || contact?.name || 'Contact record'}</b></td><td>{item.phone || contact?.phone || '—'}</td><td><span className={'status '+(['accepted','delivered','read'].includes(item.liveStatus)?'active':'pending')}>{item.liveStatus==='read'?'Read':item.liveStatus==='delivered'?'Delivered':item.liveStatus==='accepted'?'Accepted by Meta':'Failed'}</span></td><td>{item.liveDetails || (item.liveStatus==='read'?'Read receipt received.':item.liveStatus==='delivered'?'Delivered to recipient.':item.liveStatus==='accepted'?'Accepted by Meta; delivery is not confirmed.':(item.reason || 'Meta rejected this message.'))}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
               </tbody></table></div>
               <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>Accepted by Meta does not mean delivered or read. Delivery confirmation requires WhatsApp status webhooks.</div>
             </> : <div className="empty"><MessageCircle size={25}/><b>No WhatsApp campaign results yet</b><span>Send a campaign from Campaigns to see each number's result here.</span></div>}
@@ -188,12 +224,12 @@ export default function App({currentUser,onLogout,workspace}){
           <section className="panel">
             <div className="panel-head"><div><h2>All contacts <span className="count">{visible.length}</span></h2><p>Review and manage your saved contacts.</p></div><div className="head-actions"><input ref={fileRef} hidden type="file" accept=".csv,text/csv" onChange={e=>importCsv(e.target.files?.[0])}/><button className="button light" onClick={()=>fileRef.current?.click()}><Upload size={15}/> Import CSV</button><button className="button light square" onClick={exportCsv} title="Export contacts"><FileSpreadsheet size={16}/></button></div></div>
             <div className="toolbar"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name, phone or group..."/></div><div className="filters"><label><Filter size={14}/><select value={group} onChange={e=>setGroup(e.target.value)}>{groups.map(g=><option key={g}>{g}</option>)}</select></label><label><select value={status} onChange={e=>setStatus(e.target.value)}><option>All consent</option><option>Opted in</option><option>Pending</option><option>Opted out</option></select><ChevronDown size={13}/></label></div></div>
-            {selected.length>0&&<div className="selection"><b>{selected.length} selected</b><button onClick={()=>setSelected([])}>Clear selection</button><span>Bulk campaign actions will be enabled after API setup.</span></div>}
+            {selected.length>0&&<div className="selection"><b>{selected.length} selected</b><button className="button light" onClick={exportSelectedCsv}><FileSpreadsheet size={14}/> Export selected</button><button onClick={()=>setSelected([])}>Clear selection</button><span>Campaign sending still checks each contact's consent on the server.</span></div>}
             <div className="table-scroll">{contactsLoading?<div className="empty">Loading Supabase contacts…</div>:<table><thead><tr><th><input type="checkbox" aria-label="Select visible contacts" checked={visible.length>0&&visible.every(c=>selected.includes(c.id))} onChange={e=>setSelected(e.target.checked?[...new Set([...selected,...visible.map(c=>c.id)])]:selected.filter(id=>!visible.some(c=>c.id===id)))}/></th><th>CONTACT</th><th>GROUP</th><th>CONSENT STATUS</th><th>CATEGORY / SOURCE</th><th>LAST UPDATED</th><th>ACTIONS</th></tr></thead><tbody>{visible.map(c=><tr key={c.id}><td><input type="checkbox" checked={selected.includes(c.id)} onChange={()=>setSelected(old=>old.includes(c.id)?old.filter(id=>id!==c.id):[...old,c.id])} aria-label={'Select '+c.name}/></td><td><div className="contact"><div className="contact-initials">{c.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase()}</div><div><b>{c.name}</b><small>{c.phone}</small></div></div></td><td><span className="group-tag">{c.group}</span></td><td><span className={'status '+c.consent.toLowerCase().replace(' ','-')}><i/>{c.consent}</span></td><td><div>{c.consentScope||'—'}</div><small>{c.source||'—'}</small></td><td>{c.updated}</td><td><button className="more" onClick={()=>openConsentEditor(c)}>Manage consent</button><button className="more" disabled={c.consent==='Opted out'} onClick={()=>markOptOut(c)} aria-label={'Mark '+c.name+' opted out'}>{c.consent==='Opted out'?'Opted out':'Opt out'}</button></td></tr>)}</tbody></table>}{!contactsLoading&&visible.length===0&&<div className="empty"><ContactRound size={27}/><b>No contacts found</b><span>Try changing your search or filters.</span></div>}</div>
             <div className="table-foot"><span>Showing <b>{visible.length?1:0}–{visible.length}</b> of <b>{contacts.length}</b> contacts</span><span><ShieldCheck size={13}/> Synced with Supabase</span></div>
           </section>
           <div className="compliance"><ShieldCheck size={18}/><div><b>Consent-first messaging</b><span>Only message people who explicitly opted in. Store the original consent date, source and evidence; pending and opted-out contacts must be excluded from campaigns.</span></div><button onClick={()=>notify('WhatsApp consent guidance will be included in the compliance documentation.')}>Learn more <ArrowUpRight size={13}/></button></div>
-        </>:page==='Campaigns'?<CampaignsPage contacts={contacts} notify={notify} workspace={workspace}/>:page==='Reports'?<ReportsPage contacts={contacts} exportCsv={exportCsv}/> :page==='Settings'?<SettingsPage currentUser={currentUser} workspace={workspace}/>:page==='WhatsApp API'?<WhatsAppPlatformPage workspace={workspace}/>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>Choose a module from the workspace menu.</p><button className="button primary" onClick={()=>setPage('Overview')}>Back to Overview <ArrowUpRight size={15}/></button></div>}
+        </>:page==='Campaigns'?<CampaignsPage contacts={contacts} notify={notify} workspace={workspace}/>:page==='Reports'?<ReportsPage contacts={contacts} exportCsv={exportCsv} workspace={workspace}/> :page==='Settings'?<SettingsPage currentUser={currentUser} workspace={workspace}/>:page==='WhatsApp API'?<WhatsAppPlatformPage workspace={workspace}/>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>Choose a module from the workspace menu.</p><button className="button primary" onClick={()=>setPage('Overview')}>Back to Overview <ArrowUpRight size={15}/></button></div>}
       </div>
       <footer><span>© 2026 MrSa Solutions</span><span><i/> Supabase contacts · v0.1.0</span></footer>
     </main>

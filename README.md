@@ -1,82 +1,96 @@
 # MrSa WhatsApp Blaster
 
-A consent-first WhatsApp campaign management platform by **MrSa Solutions**.
+A consent-first WhatsApp Business campaign workspace by **MrSa Solutions**.
 
-## Chosen production architecture
-
-The production deployment target is **GitHub + Cloudflare + Supabase**. Render is not part of the deployment plan.
+## Production architecture
 
 | Service | Responsibility |
 | --- | --- |
-| GitHub | Source control, main branch and deployment source |
-| Cloudflare Pages | React/Vite frontend hosting and Git-connected deployments |
-| Cloudflare | React/Vite frontend hosting and Git-connected deployments |
-| Supabase | PostgreSQL database, Supabase Auth, user/workspace data, trial and subscription records, Row Level Security |
-| UPI | Customer-initiated ₹299 payment; admin verifies the UTR before activation |
-| WhatsApp Cloud API | Official WhatsApp Business messaging integration (separate credentials and approval required) |
+| GitHub | Source control and deployment source |
+| Cloudflare Pages | React/Vite frontend and Pages Functions API |
+| Supabase | Authentication, PostgreSQL workspace data, contacts, consent and message logs |
+| Meta WhatsApp Cloud API | Approved-template messaging and delivery-status webhooks |
+| UPI | Manual ₹299 subscription payment; access is extended only after bank-credit verification |
 
-### Request flow
+Production deployment target: **Cloudflare Pages**, with the GitHub `main` branch, build command `npm run build`, and output directory `dist`. The legacy Express files/scripts remain in the repository for local compatibility; they are not the production Pages Functions API.
 
-```text
-GitHub main
-   | automatic build/deploy
-   v
-Cloudflare Pages (React frontend)
-   | Supabase Auth + database requests
-   v
-Supabase Auth + PostgreSQL (RLS)
-   |
-   +---- Manual UPI UTR submission + admin review
-   |
-   +---- WhatsApp Cloud API (after integration)
-```
+## Current workspace features
 
-## Important current implementation status
+- Supabase Auth and workspace-scoped access.
+- Contact creation, editing, search, group filters, CSV import/export and selected-contact export.
+- Consent evidence fields: original opt-in date, source, evidence and scope (Marketing, Utility or All).
+- Opt-out recording; pending and opted-out contacts are excluded from sending.
+- Live sync of approved WhatsApp templates from Meta. Meta remains the source of truth for template creation and approval; there is no duplicate standalone template editor.
+- Campaign draft creation (drafts are stored in the current browser only).
+- Live approved-template sending, with server-side workspace-admin, subscription, template-category and per-contact consent checks. A send request is limited to 50 recipients.
+- Recipient-level send results, webhook-backed Accepted / Delivered / Read / Failed status, Meta error details and CSV export.
+- Manual retry of failed recipients from the latest send. The same template is reused and the server checks current consent and subscription again before retrying.
+- Reports for consent and WhatsApp message delivery; report totals are limited to the latest 1,000 stored message records.
+- Manual UPI billing and admin payment review.
 
-The current repository still contains a **legacy Express + Node.js + direct PostgreSQL (`pg`) backend** under `server/`. It is not yet migrated to Cloudflare Workers/Pages Functions. Do not deploy that Express server as if it were a Cloudflare Worker, and do not configure Render.
+**Status wording matters:** “Accepted by Meta” means Meta accepted the API request; it does not prove delivery. Delivered and Read require the corresponding Meta webhook status.
 
-The existing React UI uses the legacy API routes in `src/AuthGate.jsx` and `src/Billing.jsx`. These need to be migrated to Supabase Auth and the new Cloudflare API endpoints. The existing contacts UI currently stores demo contacts in browser local storage; persistent workspace-scoped contacts and campaigns remain to be implemented.
+## Cloudflare Pages build settings
 
-The earlier Supabase Publishable Key and Project URL are not enough to connect the legacy `pg` backend. For the selected architecture, the browser may use the Supabase Project URL and Publishable Key with Supabase Auth and RLS enabled. Secret/service-role keys must remain server-side and must never be exposed in `VITE_` variables.
-
-## Supabase project setup
-
-1. In Supabase, open **Project Settings → API Keys** (or the API section shown in your dashboard) and use the **Project URL** and **Publishable key** for the browser Supabase client.
-2. In Supabase **Authentication → URL Configuration**, configure the Cloudflare production URL and local development redirect URLs.
-3. Create the application schema and enable Row Level Security on every user/workspace-owned table.
-4. Create policies that scope data to the authenticated user's workspace. Never rely on frontend checks alone for authorization.
-5. Keep the Supabase Secret key / legacy service_role key private. Use it only in Cloudflare server-side secrets when a privileged server operation genuinely requires it; prefer user-scoped Supabase clients and RLS.
-
-The API URL ending in `/rest/v1/` is the REST endpoint, not the base Project URL. The base URL is `https://<project-ref>.supabase.co`.
-
-## Cloudflare deployment target
-
-For the React/Vite frontend, connect the GitHub repository to Cloudflare Pages with:
-
+- Framework preset: Vite
 - Production branch: `main`
 - Build command: `npm run build`
 - Build output directory: `dist`
+- Node.js: 20+
 
-The API migration should use Cloudflare Pages Functions (the `functions/` directory) or a separate Cloudflare Worker. Store server-only credentials using Cloudflare secrets/environment bindings, not committed files. Add the API routes and configure Supabase Auth/RLS before directing production traffic to the new backend.
+GitHub Actions is configured to run `npm install` and `npm run build` for pull requests and pushes to `main`.
 
-Do not mark the application production-ready until the Pages build, authentication, RLS isolation, trial expiry, manual UPI approval workflow, and end-to-end payment flow have all been tested.
+## Environment variables and secrets
 
-## Product requirements
+### Cloudflare Pages build variables
 
-- Platform Super Admin and workspace Admin/User roles.
-- User registration and login.
-- 30-day free trial per new workspace.
-- Trial expiry and subscription access enforcement on the server.
-- Starter subscription: **₹299/month**.
-- Manual UPI payment submission, admin approval and payment history.
-- User dashboard, workspace-scoped contact management, consent status, campaigns, templates and message history.
-- Official WhatsApp Business Platform / Cloud API integration, with opt-in and opt-out enforcement.
+- `VITE_SUPABASE_URL` — Supabase project URL.
+- `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase publishable/anon key.
 
-## Subscription and payment notes
+### Cloudflare Pages server-side secrets
 
-The first release uses a manual UPI payment process and grants 30 days of access after an admin verifies the bank credit and approves the submitted UTR. Automatic recurring debit is not enabled.
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `WHATSAPP_ACCESS_TOKEN`
+- `WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_BUSINESS_ACCOUNT_ID`
+- `WHATSAPP_VERIFY_TOKEN`
+- `META_APP_SECRET`
+- `WHATSAPP_API_VERSION` (optional; defaults to `v27.0`)
 
-UPI payments are not verified automatically. A workspace admin must confirm the ₹299 credit in the bank account before approving a submitted UTR. Never activate a subscription based only on a screenshot or a customer-entered reference.
+Keep service-role keys, Meta access tokens, App Secrets and webhook verify tokens as encrypted server-side secrets. Never put them in frontend code, `VITE_` variables, Git commits, screenshots or chat messages.
+
+## WhatsApp API routes
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/whatsapp/status?workspaceId=...` | Verify server configuration and Meta phone-number connection |
+| GET | `/api/whatsapp/templates?workspaceId=...` | Retrieve templates from the configured WABA |
+| POST | `/api/whatsapp/send` | Send an approved template to up to 50 eligible contacts |
+| GET | `/api/whatsapp/webhook` | Meta webhook verification |
+| POST | `/api/whatsapp/webhook` | Verify Meta signature and persist message status updates |
+
+Configure the Meta callback URL as:
+
+```
+https://<your-cloudflare-pages-domain>/api/whatsapp/webhook
+```
+
+Use the same value for the Meta verify token and `WHATSAPP_VERIFY_TOKEN`. Subscribe the Meta app to the WhatsApp `messages` webhook field. Production webhook events require the Meta app to be published and correctly subscribed. A browser-side send result alone cannot provide Delivered or Read confirmation.
+
+## Supabase migrations
+
+The current app expects the existing schema migrations below. Apply them in filename order in Supabase SQL Editor if they have not already been applied:
+
+1. `supabase/migrations/202611200001_initial_workspace_auth.sql`
+2. `supabase/migrations/202611200003_manual_upi_billing.sql`
+3. `supabase/migrations/202611200004_super_admin_dashboard_rls.sql`
+4. `supabase/migrations/202611200005_whatsapp_cloud_api.sql`
+5. `supabase/migrations/202611250001_service_role_table_privileges.sql`
+6. `supabase/migrations/202611260001_whatsapp_delivery_details.sql`
+
+The full-workspace functionality upgrade in this branch adds **no new database migration**. It uses the existing `whatsapp_message_logs` table and its delivery-detail columns. Do not re-run migrations blindly; first check the Supabase migration history and apply only missing migrations.
 
 ## Local development
 
@@ -88,37 +102,22 @@ npm run dev
 npm run build
 ```
 
-The current `npm run dev:server` and `npm start` scripts launch the legacy Express backend for local compatibility only. They are not the Cloudflare production API. The frontend currently still calls that legacy API until the Supabase/Cloudflare migration is completed.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` for local frontend development. Configure server-side bindings separately when testing Pages Functions with the appropriate Cloudflare development workflow.
 
-## Security checklist
+## Important limitations
 
-- Never commit `.env` files, database passwords, Supabase Secret/service_role keys, WhatsApp access tokens, or webhook secrets.
-- Never expose privileged credentials in `VITE_` variables.
-- Enable and test Supabase RLS for every private table.
-- Verify authorization and workspace ownership in server-side code.
-- Use HTTPS, rate limiting, input validation, audit logs and safe error messages.
-- Verify each submitted UPI transaction against the bank account before approving it.
-- Use only the official WhatsApp Business Platform / Cloud API and honor opt-outs and approved template rules.
+- Campaign drafts are browser-local; they are not shared across devices or team members.
+- Campaign send batches are limited to 50 recipients per request.
+- Campaign and report screens show the latest 100 and 1,000 message logs respectively, not unlimited lifetime totals.
+- Failed-recipient retry is offered for the latest send report stored in the current browser. The server revalidates consent, role and subscription before sending.
+- Delivery and read receipts depend on correct Meta webhook configuration and event delivery.
+- UPI payment references are not automatically verified. An admin must confirm the actual bank credit before approving a subscription.
 
-## Supabase Auth migration (initial implementation)
+## Security and compliance
 
-The initial Supabase migration is now present in `supabase/migrations/202611200001_initial_workspace_auth.sql`. It creates profiles, workspaces, workspace memberships, workspace subscriptions and contacts; a trusted `auth.users` trigger creates a workspace Admin and a 30-day Starter trial for each new signup. RLS policies scope workspace and contact access to the signed-in member and block contact access after trial/subscription expiry. The frontend auth gate now uses Supabase Auth instead of the legacy Express login routes.
-
-### Configure the frontend
-
-Set these Cloudflare build environment variables (and the same variables locally in `.env.local`):
-
-- `VITE_SUPABASE_URL` = your Supabase Project URL (without `/rest/v1/`)
-- `VITE_SUPABASE_PUBLISHABLE_KEY` = your Supabase Publishable key
-
-Then apply the SQL migration in Supabase SQL Editor. In Supabase Authentication → URL Configuration, add the deployed Cloudflare URL to Site URL / Redirect URLs. If email confirmation is enabled, new users must confirm their email before signing in.
-
-**Not yet migrated:** contacts UI still uses local demo storage; team-user invitation, full platform admin management, Cloudflare API functions and WhatsApp Cloud API are future milestones. Billing uses manual UPI submission and admin approval. Do not treat the app as production-ready until these are implemented and tested.
-
-## Manual UPI billing
-
-The Billing screen uses the UPI ID configured in `src/Billing.jsx`. Customers pay ₹299 through their preferred UPI app, then submit the UPI transaction reference (UTR). The app stores each submission in Supabase. A workspace admin must verify the actual bank credit and approve the request; the database function then extends the workspace subscription by 30 days. UTR submission alone never activates access.
-
-Apply `supabase/migrations/202611200003_manual_upi_billing.sql` in Supabase SQL Editor. No Razorpay or Paytm credentials, webhook, billing Worker, or `VITE_BILLING_API_URL` are required for this manual flow.
-
-After applying the migration, deploy the updated frontend. Test using a small real UPI payment and approve it only after confirming the bank credit. For testing the approval interface without a real customer, use a controlled test workspace and do not grant live subscription time without a verified payment.
+- Keep Supabase RLS enabled for workspace-owned tables.
+- Server-side endpoints verify the signed-in user, workspace Admin role and active trial/subscription before sending.
+- Each recipient is checked again for active opt-in, original consent date, source, evidence and matching category.
+- Never fabricate or broaden consent evidence. Record opt-outs promptly.
+- Use only templates approved by Meta and honor WhatsApp policies and customer preferences.
+- Verify a UPI credit in the bank account before approving the submitted UTR.
