@@ -132,6 +132,13 @@ export default function Billing({ workspace, currentUser }) {
       {message && <div style={{ marginTop: 16, color: '#16834a', fontSize: 13, display: 'flex', alignItems: 'center', gap: 7 }}><CheckCircle2 size={15}/> {message}</div>}
     </section>
 
+    <section className="panel" style={{ maxWidth: 900, marginTop: 22, padding: 22 }}>
+      <div className="eyebrow">PLAN OPTIONS</div>
+      <h2 style={{margin:'6px 0'}}>Professional subscription</h2>
+      <p style={{color:'#64748b',fontSize:13,lineHeight:1.6,margin:'6px 0 0'}}>Professional plan billing can be enabled through the existing manual UPI verification workflow. Its price, billing period and included limits have not yet been configured, so no unconfirmed amount will be charged or displayed.</p>
+      <div style={{marginTop:14,padding:13,border:'1px solid #e1e6ed',borderRadius:9,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}><div><b>Professional plan</b><div style={{fontSize:12,color:'#7b8797',marginTop:4}}>Pricing and plan limits awaiting confirmation</div></div><span className="status pending"><i/>Not configured</span></div>
+    </section>
+
     {isAdmin && <section className="panel" style={{ maxWidth: 900, marginTop: 22 }}>
       <div className="panel-head"><div><h2>Admin payment approvals <span className="count">{pending.length}</span></h2><p>Verify the actual bank credit before approving a payment.</p></div><button className="button light" onClick={refresh} disabled={loading}><RefreshCw size={15}/> Refresh</button></div>
       <div className="table-scroll"><table><thead><tr><th>SUBMITTED</th><th>UTR / TRANSACTION ID</th><th>AMOUNT</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>
@@ -141,7 +148,7 @@ export default function Billing({ workspace, currentUser }) {
     </section>}
 
     <section className="panel" style={{ maxWidth: 900, marginTop: 22 }}>
-      <div className="panel-head"><div><h2>Payment submissions</h2><p>Track the status of your submitted UPI references.</p></div><button className="button light" onClick={refresh} disabled={loading}><RefreshCw size={15}/> Refresh</button></div>
+      <div className="panel-head"><div><h2>Payment history</h2><p>Workspace UPI payment references, verification decisions and admin notes.</p></div><button className="button light" onClick={refresh} disabled={loading}><RefreshCw size={15}/> Refresh</button></div>
       <div className="table-scroll"><table><thead><tr><th>DATE</th><th>UTR / TRANSACTION ID</th><th>AMOUNT</th><th>STATUS</th><th>ADMIN NOTE</th></tr></thead><tbody>
         {payments.map(p => <tr key={p.id}><td>{formatDate(p.created_at)}</td><td>{p.utr}</td><td>₹{(p.amount_paise / 100).toFixed(2)}</td><td><span className={'status ' + (p.status === 'approved' ? 'opted-in' : p.status === 'rejected' ? 'opted-out' : 'pending')}><i/>{p.status}</span></td><td>{p.admin_note || '—'}</td></tr>)}
         {!payments.length && <tr><td colSpan="5" style={{ textAlign: 'center', padding: 28, color: '#64748b' }}>{loading ? 'Loading payment submissions…' : 'No payments submitted yet.'}</td></tr>}
