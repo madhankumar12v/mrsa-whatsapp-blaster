@@ -10,6 +10,11 @@ import { Activity, ArrowDownToLine, ArrowUpRight, Bell, Check, ChevronDown, Circ
 const nav = [{name:'Overview',icon:LayoutDashboard},{name:'Contacts',icon:ContactRound},{name:'Campaigns',icon:Megaphone},{name:'Reports',icon:Activity},{name:'Billing',icon:CreditCard}];
 const cleanPhone = value => String(value || '').replace(/[\\s()-]/g,'');
 
+function readLastSend(){
+  try { return JSON.parse(localStorage.getItem('mrsa-last-send-v1') || 'null'); }
+  catch { return null; }
+}
+
 function loadContacts(){
   try { const raw=localStorage.getItem('mrsa-contacts-v1'); return raw ? JSON.parse(raw) : []; }
   catch { return []; }
@@ -23,6 +28,7 @@ export default function App({currentUser,onLogout,workspace}){
   const [page,setPage]=useState('Overview');
   const [contacts,setContacts]=useState([]);
   const [contactsLoading,setContactsLoading]=useState(true);
+  const [lastSend,setLastSend]=useState(readLastSend);
   const [query,setQuery]=useState('');
   const [group,setGroup]=useState('All groups');
   const [status,setStatus]=useState('All consent');
@@ -155,6 +161,20 @@ export default function App({currentUser,onLogout,workspace}){
             <div className="stat"><div className="stat-label">Opted-in contacts <span className="stat-icon green"><ShieldCheck size={17}/></span></div><strong>{optedIn.toLocaleString('en-IN')}</strong><small className="good">Eligible audience</small></div>
             <div className="stat"><div className="stat-label">Opted-out <span className="stat-icon orange"><X size={17}/></span></div><strong>{optedOut.toLocaleString('en-IN')}</strong><small>Excluded from campaigns</small></div>
             <div className="stat"><div className="stat-label">Subscription <span className="stat-icon blue"><CreditCard size={17}/></span></div><strong>₹299</strong><small>Monthly plan after 30-day trial</small></div>
+          </section>
+          <section className="panel" style={{marginBottom:18}}>
+            <div className="panel-head"><div><h2>WhatsApp campaign results</h2><p>{lastSend ? (lastSend.templateName+' · '+lastSend.language+' · '+new Date(lastSend.createdAt).toLocaleString('en-IN')) : 'Your latest recipient-level send status will appear here after a campaign.'}</p></div><div className="head-actions"><button className="button light" onClick={()=>setPage('Campaigns')}>Open Campaigns</button></div></div>
+            {lastSend ? <>
+              <div className="stats" style={{padding:'0 20px 16px'}}>
+                <div className="stat"><div className="stat-label">Requested</div><strong>{lastSend.requested ?? lastSend.results?.length ?? 0}</strong><small>Recipients in last run</small></div>
+                <div className="stat"><div className="stat-label">Accepted by Meta</div><strong>{lastSend.sent ?? 0}</strong><small>API accepted · not delivery-confirmed</small></div>
+                <div className="stat"><div className="stat-label">Failed</div><strong>{lastSend.failed ?? 0}</strong><small>Rejected or not sent</small></div>
+              </div>
+              <div className="table-scroll"><table><thead><tr><th>CONTACT</th><th>WHATSAPP NUMBER</th><th>RESULT</th><th>DETAILS</th><th>META MESSAGE ID</th></tr></thead><tbody>
+                {(lastSend.results || []).map((item,index)=><tr key={item.contactId||index}><td><b>{item.contactName || 'Contact record'}</b></td><td>{item.phone || '—'}</td><td><span className={'status '+(item.sent?'active':'pending')}>{item.sent?'Accepted by Meta':'Failed'}</span></td><td>{item.sent?'Request accepted by Meta; delivery is not confirmed.':(item.reason || 'Meta rejected this message.')}</td><td><small>{item.messageId || '—'}</small></td></tr>)}
+              </tbody></table></div>
+              <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>Accepted by Meta does not mean delivered or read. Delivery confirmation requires WhatsApp status webhooks.</div>
+            </> : <div className="empty"><MessageCircle size={25}/><b>No WhatsApp campaign results yet</b><span>Send a campaign from Campaigns to see each number's result here.</span></div>}
           </section>
           <section className="panel"><div className="panel-head"><div><h2>Workspace management</h2><p>Choose a module to continue managing your business messaging workspace.</p></div></div><div style={{padding:20,display:'flex',gap:10,flexWrap:'wrap'}}><button className="button light" onClick={()=>setPage('Contacts')}><ContactRound size={16}/> Contacts</button><button className="button light" onClick={()=>setPage('Campaigns')}><Megaphone size={16}/> Campaigns</button><button className="button light" onClick={()=>setPage('Reports')}><Activity size={16}/> Reports</button><button className="button light" onClick={()=>setPage('Billing')}><CreditCard size={16}/> Billing</button></div></section>
         </>:page==='Contacts'?<>
