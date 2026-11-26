@@ -30,6 +30,9 @@ export default function App({currentUser,onLogout,workspace}){
   const [contactsLoading,setContactsLoading]=useState(true);
   const [lastSend,setLastSend]=useState(readLastSend);
   const [dashboardLogs,setDashboardLogs]=useState([]);
+  const [dashboardLogsLoading,setDashboardLogsLoading]=useState(true);
+  const [dashboardLogsError,setDashboardLogsError]=useState('');
+  const [dashboardLogsUpdatedAt,setDashboardLogsUpdatedAt]=useState(null);
   const [query,setQuery]=useState('');
   const [group,setGroup]=useState('All groups');
   const [status,setStatus]=useState('All consent');
@@ -55,22 +58,26 @@ export default function App({currentUser,onLogout,workspace}){
     loadWorkspaceContacts();
     return ()=>{alive=false;};
   },[workspace?.id]);
+  async function loadDashboardDelivery(silent=false){
+    if(!workspace?.id){setDashboardLogs([]);setDashboardLogsLoading(false);return;}
+    if(!silent)setDashboardLogsLoading(true);
+    setDashboardLogsError('');
+    const {data,error}=await supabase.from('whatsapp_message_logs')
+      .select('id,recipient_phone,template_name,meta_message_id,status,error_message,meta_error_code,status_updated_at,created_at')
+      .eq('workspace_id',workspace.id)
+      .order('created_at',{ascending:false})
+      .limit(300);
+    if(error)setDashboardLogsError(error.message || 'Delivery analytics could not be loaded.');
+    else setDashboardLogs(Array.isArray(data)?data:[]);
+    setDashboardLogsUpdatedAt(new Date().toISOString());
+    setDashboardLogsLoading(false);
+  }
   useEffect(()=>{
-    let alive=true;
-    async function loadDashboardDelivery(){
-      if(!workspace?.id){setDashboardLogs([]);return;}
-      const {data,error}=await supabase.from('whatsapp_message_logs')
-        .select('meta_message_id,status,error_message,status_updated_at,created_at')
-        .eq('workspace_id',workspace.id)
-        .order('created_at',{ascending:false})
-        .limit(300);
-      if(alive&&!error)setDashboardLogs(Array.isArray(data)?data:[]);
-    }
     loadDashboardDelivery();
     const timer=window.setInterval(()=>{
-      if(document.visibilityState==='visible')loadDashboardDelivery();
+      if(document.visibilityState==='visible')loadDashboardDelivery(true);
     },15000);
-    return ()=>{alive=false;window.clearInterval(timer);};
+    return ()=>window.clearInterval(timer);
   },[workspace?.id]);
   const dashboardLastSend=useMemo(()=>{
     if(!lastSend)return null;
@@ -183,8 +190,8 @@ export default function App({currentUser,onLogout,workspace}){
       <div className="brand"><div className="brand-mark"><Zap size={21} fill="currentColor"/></div><div><b>MrSa<span>Blaster</span></b><small>MRSA SOLUTIONS</small></div></div>
       <div className="workspace"><div className="workspace-mark">M</div><div><b>{workspace?.name || "MrSa Workspace"}</b><small>{currentUser?.role === "super_admin" ? "Platform Super Admin" : currentUser?.role === "admin" ? "Workspace Admin" : "Workspace User"}</small></div><ChevronDown size={15}/></div>
       <div className="nav-label">WORKSPACE</div>
-      <nav>{nav.map(item=><button key={item.name} className={'nav-item '+(page===item.name?'active':'')} onClick={()=>setPage(item.name)}><item.icon size={18}/>{item.name}{item.name==='Contacts'&&<span className="nav-count">{contacts.length}</span>}</button>)}</nav>
-      <div className="nav-label preferences">PREFERENCES</div><button className={'nav-item '+(page==='WhatsApp API'?'active':'')} onClick={()=>setPage('WhatsApp API')}><MessageCircle size={18}/>WhatsApp API</button><button className={'nav-item '+(page==='Settings'?'active':'')} onClick={()=>setPage('Settings')}><Settings size={18}/>Settings</button>
+      <nav>{nav.map(item=><button key={item.name} className={'nav-item '+(page===item.name?'active':'')} onClick={()=>setPage(item.name)} title={item.name} aria-label={item.name}><item.icon size={18}/>{item.name}{item.name==='Contacts'&&<span className="nav-count">{contacts.length}</span>}</button>)}</nav>
+      <div className="nav-label preferences">PREFERENCES</div><button className={'nav-item '+(page==='WhatsApp API'?'active':'')} onClick={()=>setPage('WhatsApp API')} title="WhatsApp API" aria-label="WhatsApp API"><MessageCircle size={18}/>WhatsApp API</button><button className={'nav-item '+(page==='Settings'?'active':'')} onClick={()=>setPage('Settings')} title="Settings" aria-label="Settings"><Settings size={18}/>Settings</button>
       <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18}/><b>Need a hand?</b><p>Setup guide and product help.</p><button onClick={()=>setPage('WhatsApp API')}>Open setup guide <ArrowUpRight size={13}/></button></div><div className="profile"><div className="profile-avatar">{(currentUser?.name || "U").split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase()}</div><div><b>{currentUser?.name || "Account"}</b><small>{currentUser?.email || currentUser?.role}</small></div><button className="profile-logout" onClick={onLogout} title="Sign out"><LogOut size={16}/></button></div></div>
     </aside>
     <main className="main">
@@ -196,7 +203,28 @@ export default function App({currentUser,onLogout,workspace}){
             <div className="stat"><div className="stat-label">Total contacts <span className="stat-icon purple"><Users size={17}/></span></div><strong>{contacts.length.toLocaleString('en-IN')}</strong><small>Saved in Supabase workspace</small></div>
             <div className="stat"><div className="stat-label">Opted-in contacts <span className="stat-icon green"><ShieldCheck size={17}/></span></div><strong>{optedIn.toLocaleString('en-IN')}</strong><small className="good">Eligible audience</small></div>
             <div className="stat"><div className="stat-label">Opted-out <span className="stat-icon orange"><X size={17}/></span></div><strong>{optedOut.toLocaleString('en-IN')}</strong><small>Excluded from campaigns</small></div>
-            <div className="stat"><div className="stat-label">Subscription <span className="stat-icon blue"><CreditCard size={17}/></span></div><strong>₹299</strong><small>Monthly plan after 30-day trial</small></div>
+            <div className="stat"><div className="stat-label">Subscription <span className="stat-icon blue"><CreditCard size={17}/></span></div><strong>{workspace?.subscriptionStatus==='active'?'Active':workspace?.subscriptionStatus==='trialing'?'Trial': 'Review'}</strong><small>{workspace?.subscriptionStatus==='active'&&workspace?.paidThrough?'Paid through '+new Date(workspace.paidThrough).toLocaleDateString('en-IN'):workspace?.subscriptionStatus==='trialing'&&workspace?.trialEndsAt?'Trial ends '+new Date(workspace.trialEndsAt).toLocaleDateString('en-IN'):'Check billing status'}</small></div>
+          </section>
+          <section className="panel delivery-overview" style={{marginBottom:18}}>
+            <div className="panel-head">
+              <div><h2>WhatsApp delivery overview</h2><p>Workspace-wide delivery activity from Supabase · latest 300 message attempts</p></div>
+              <div className="head-actions"><span className="live-indicator"><i/> Live sync · 15 sec</span><button className="button light" onClick={()=>loadDashboardDelivery()} disabled={dashboardLogsLoading}>{dashboardLogsLoading?'Refreshing…':'Refresh'}</button></div>
+            </div>
+            {dashboardLogsError&&<div className="dashboard-error">{dashboardLogsError}</div>}
+            <div className="stats delivery-stats">
+              <div className="stat"><div className="stat-label">Total attempts</div><strong>{dashboardLogs.length.toLocaleString('en-IN')}</strong><small>Recent saved messages</small></div>
+              <div className="stat"><div className="stat-label">Accepted</div><strong>{dashboardLogs.filter(row=>['accepted','sent'].includes(String(row.status||'').toLowerCase())).length.toLocaleString('en-IN')}</strong><small>Awaiting delivery receipt</small></div>
+              <div className="stat"><div className="stat-label">Delivered</div><strong>{dashboardLogs.filter(row=>['delivered','read'].includes(String(row.status||'').toLowerCase())).length.toLocaleString('en-IN')}</strong><small>Confirmed by Meta</small></div>
+              <div className="stat"><div className="stat-label">Read</div><strong>{dashboardLogs.filter(row=>String(row.status||'').toLowerCase()==='read').length.toLocaleString('en-IN')}</strong><small>Read receipts received</small></div>
+              <div className="stat"><div className="stat-label">Failed</div><strong>{dashboardLogs.filter(row=>String(row.status||'').toLowerCase()==='failed').length.toLocaleString('en-IN')}</strong><small>Needs attention</small></div>
+            </div>
+            <div className="delivery-table-head"><b>Recent message activity</b><span>{dashboardLogsUpdatedAt?'Updated '+new Date(dashboardLogsUpdatedAt).toLocaleTimeString('en-IN'):'Waiting for first sync'}</span></div>
+            <div className="table-scroll"><table className="delivery-table"><thead><tr><th>PHONE NUMBER</th><th>TEMPLATE</th><th>STATUS</th><th>DETAILS</th><th>LAST UPDATED</th></tr></thead><tbody>
+              {dashboardLogs.slice(0,8).map(row=>{const status=String(row.status||'unknown').toLowerCase();return <tr key={row.id}><td><b>{row.recipient_phone||'—'}</b></td><td>{row.template_name||'—'}</td><td><span className={'status '+(['delivered','read'].includes(status)?'delivery-success':status==='failed'?'delivery-failed':'delivery-waiting')}>{status.replaceAll('_',' ').toUpperCase()}</span></td><td>{row.error_message|| (status==='accepted'?'Accepted by Meta; delivery is not yet confirmed.':status==='sent'?'Sent to WhatsApp; awaiting delivery confirmation.':status==='read'?'Read receipt received.':status==='delivered'?'Delivered to recipient.':'—')}{row.meta_error_code?' (Code: '+row.meta_error_code+')':''}</td><td>{new Date(row.status_updated_at||row.created_at).toLocaleString('en-IN')}</td></tr>;})}
+            </tbody></table>
+            {!dashboardLogsLoading&&!dashboardLogsError&&!dashboardLogs.length&&<div className="empty"><MessageCircle size={24}/><b>No WhatsApp activity yet</b><span>Message attempts will appear here after a campaign is sent.</span></div>}
+            </div>
+            <div className="delivery-foot"><span>Accepted is not a delivery confirmation. Delivered and Read are confirmed by Meta webhooks.</span><button onClick={()=>setPage('Reports')}>Open full reports <ArrowUpRight size={13}/></button></div>
           </section>
           <section className="panel" style={{marginBottom:18}}>
             <div className="panel-head"><div><h2>WhatsApp campaign results</h2><p>{dashboardLastSend ? (dashboardLastSend.templateName+' · '+dashboardLastSend.language+' · '+new Date(dashboardLastSend.createdAt).toLocaleString('en-IN')) : 'Your latest recipient-level send status will appear here after a campaign.'}</p></div><div className="head-actions"><button className="button light" onClick={()=>setPage('Campaigns')}>Open Campaigns</button></div></div>
