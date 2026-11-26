@@ -30,6 +30,28 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [templatesError, setTemplatesError] = useState('');
   const [sending, setSending] = useState(false);
   const [lastSend, setLastSend] = useState(readLastSend);
+  const [deliveryLogs, setDeliveryLogs] = useState([]);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [deliveryError, setDeliveryError] = useState('');
+
+  async function loadDeliveryHistory() {
+    if (!workspace?.id) { setDeliveryLogs([]); return; }
+    setDeliveryLoading(true); setDeliveryError('');
+    const { data, error } = await supabase
+      .from('whatsapp_message_logs')
+      .select('id,recipient_phone,template_name,status,status_updated_at,created_at,meta_message_id,error_message,meta_error_code,meta_error_details')
+      .eq('workspace_id', workspace.id)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (error) {
+      setDeliveryError(error.message || 'Delivery history could not be loaded.');
+    } else {
+      setDeliveryLogs(Array.isArray(data) ? data : []);
+    }
+    setDeliveryLoading(false);
+  }
+
+  useEffect(() => { loadDeliveryHistory(); }, [workspace?.id]);
 
   async function syncMetaTemplates() {
     if (!workspace?.id) return;
@@ -122,6 +144,30 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with complete opt-in evidence and {campaignCategory} consent (or All scope). Maximum 50 recipients per send.</span></div></div>
         <div><button className="button primary" type="button" disabled={sending || !eligible || !templateName || !metaTemplates.some(item=>item.name===templateName&&item.language===templateLanguage&&item.status==='APPROVED')} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
       </div>
+    </section>
+    <section className="panel" style={{marginBottom:18}}>
+      <div className="panel-head">
+        <div><h2>WhatsApp delivery dashboard</h2><p>Latest 100 message attempts saved in this workspace. Delivery status updates arrive through Meta webhooks.</p></div>
+        <button className="button light" type="button" onClick={loadDeliveryHistory} disabled={deliveryLoading}><RefreshCw size={14}/>{deliveryLoading?'Refreshing…':'Refresh status'}</button>
+      </div>
+      <div className="stats" style={{padding:'0 20px 18px'}}>
+        <Stat label="Total attempts" value={deliveryLogs.length} note="Saved message logs" icon={Activity}/>
+        <Stat label="Delivered" value={deliveryLogs.filter(x=>x.status==='delivered').length} note="Confirmed by WhatsApp" icon={Check}/>
+        <Stat label="Read" value={deliveryLogs.filter(x=>x.status==='read').length} note="Read receipt received" icon={MessageCircle}/>
+        <Stat label="Failed" value={deliveryLogs.filter(x=>x.status==='failed').length} note="Meta send or delivery failure" icon={X}/>
+      </div>
+      {deliveryError && <div style={{padding:'0 20px 16px',fontSize:12,color:'#b45309'}}>Could not load delivery history: {deliveryError}. If this mentions a missing column, apply the new Supabase migration first.</div>}
+      <div className="table-scroll"><table><thead><tr><th>PHONE NUMBER</th><th>TEMPLATE</th><th>STATUS</th><th>DETAILS</th><th>LAST UPDATE</th><th>META MESSAGE ID</th></tr></thead><tbody>
+        {deliveryLogs.map(item=><tr key={item.id}>
+          <td><b>{item.recipient_phone || '—'}</b></td>
+          <td>{item.template_name || '—'}</td>
+          <td><span className={'status '+(['delivered','read'].includes(item.status)?'active':item.status==='failed'?'pending':'')}>{String(item.status || 'unknown').replaceAll('_',' ').toUpperCase()}</span></td>
+          <td>{item.error_message || (item.status==='accepted'?'Accepted by Meta; delivery not yet confirmed.':item.status==='sent'?'Sent to WhatsApp; waiting for delivery confirmation.':item.status==='delivered'?'Delivered to recipient.':item.status==='read'?'Read receipt received.':'—')}{item.meta_error_code?' (Code: '+item.meta_error_code+')':''}{item.meta_error_details?' · '+item.meta_error_details:''}</td>
+          <td>{new Date(item.status_updated_at || item.created_at).toLocaleString('en-IN')}</td>
+          <td><small>{item.meta_message_id || '—'}</small></td>
+        </tr>)}
+      </tbody></table>{!deliveryLoading&&!deliveryError&&deliveryLogs.length===0&&<div className="empty"><MessageCircle size={25}/><b>No WhatsApp delivery records yet</b><span>After a campaign attempt, each saved result will appear here.</span></div>}</div>
+      <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>“Accepted” is not a delivery confirmation. “Delivered” and “Read” are confirmed by status webhooks. Failed attempts show the Meta error where available.</div>
     </section>
     {lastSend && <section className="panel" style={{marginBottom:18}}>
       <div className="panel-head"><div><h2>Last WhatsApp send results</h2><p>{lastSend.templateName} · {lastSend.language} · {new Date(lastSend.createdAt).toLocaleString('en-IN')} · {lastSend.requested} requested</p></div><span className="count">{lastSend.sent} accepted · {lastSend.failed} failed</span></div>
