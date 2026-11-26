@@ -23,6 +23,7 @@ jobs:
       - name: Validate workspace API syntax
         run: |
           node --check functions/api/workspace/team.js
+          node --check functions/api/whatsapp/send.js
           node --check functions/api/workspace/health.js
           node --check functions/api/whatsapp/webhook.js
       - name: Build production bundle
