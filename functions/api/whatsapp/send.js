@@ -67,6 +67,22 @@ export async function onRequestPost({ request, env }) {
         });
       } catch (error) {
         console.error("WhatsApp Meta send failed", { contactId, recipient: to, message: error.meta, code: error.code, subcode: error.subcode, type: error.type, details: error.details, fbtraceId: error.fbtraceId });
+        try {
+          await db(env, "whatsapp_message_logs", {
+            method: "POST",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({
+              workspace_id: workspaceId, contact_id: contact.id, created_by: user.id,
+              recipient_phone: to, template_name: templateName, meta_message_id: null,
+              status: "failed", status_updated_at: new Date().toISOString(),
+              error_message: error.meta || "Meta rejected this message.",
+              meta_error_code: String(error.code || ""), meta_error_subcode: String(error.subcode || ""),
+              meta_error_details: error.details || ""
+            })
+          });
+        } catch (logError) {
+          console.error("Failed WhatsApp send could not be saved to delivery history", { contactId, error: logError?.message || "Database error" });
+        }
         results.push({ contactId, phone: to, sent: false, reason: error.meta || "Meta rejected this message.", errorCode: error.code || null, errorSubcode: error.subcode || null, errorType: error.type || null, errorDetails: error.details || null, fbtraceId: error.fbtraceId || null });
         continue;
       }
