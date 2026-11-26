@@ -5,9 +5,10 @@ import { CreditCard } from 'lucide-react';
 import Billing from './Billing.jsx';
 import { CampaignsPage, ReportsPage, SettingsPage } from './WorkspacePages.jsx';
 import WhatsAppPlatformPage from './WhatsAppPlatform.jsx';
+import AdvancedAnalytics from './AdvancedAnalytics.jsx';
 import { Activity, ArrowDownToLine, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ContactRound, FileSpreadsheet, Filter, Grid2X2, LayoutDashboard, Megaphone, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Upload, Users, X, Zap, LogOut } from 'lucide-react';
 
-const nav = [{name:'Overview',icon:LayoutDashboard},{name:'Contacts',icon:ContactRound},{name:'Campaigns',icon:Megaphone},{name:'Reports',icon:Activity},{name:'Billing',icon:CreditCard}];
+const nav = [{name:'Overview',icon:LayoutDashboard},{name:'Contacts',icon:ContactRound},{name:'Campaigns',icon:Megaphone},{name:'Reports',icon:Activity},{name:'Analytics',icon:Activity},{name:'Billing',icon:CreditCard}];
 const cleanPhone = value => String(value || '').replace(/[\\s()-]/g,'');
 
 function readLastSend(){
@@ -257,7 +258,7 @@ export default function App({currentUser,onLogout,workspace}){
             <div className="table-foot"><span>Showing <b>{visible.length?1:0}–{visible.length}</b> of <b>{contacts.length}</b> contacts</span><span><ShieldCheck size={13}/> Synced with Supabase</span></div>
           </section>
           <div className="compliance"><ShieldCheck size={18}/><div><b>Consent-first messaging</b><span>Only message people who explicitly opted in. Store the original consent date, source and evidence; pending and opted-out contacts must be excluded from campaigns.</span></div><button onClick={()=>notify('WhatsApp consent guidance will be included in the compliance documentation.')}>Learn more <ArrowUpRight size={13}/></button></div>
-        </>:page==='Campaigns'?<CampaignsPage contacts={contacts} notify={notify} workspace={workspace}/>:page==='Reports'?<ReportsPage contacts={contacts} exportCsv={exportCsv} workspace={workspace}/> :page==='Settings'?<SettingsPage currentUser={currentUser} workspace={workspace}/>:page==='WhatsApp API'?<WhatsAppPlatformPage workspace={workspace}/>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>Choose a module from the workspace menu.</p><button className="button primary" onClick={()=>setPage('Overview')}>Back to Overview <ArrowUpRight size={15}/></button></div>}
+        </>:page==='Campaigns'?<CampaignsPage contacts={contacts} notify={notify} workspace={workspace}/>:page==='Reports'?<ReportsPage contacts={contacts} exportCsv={exportCsv} workspace={workspace}/>:page==='Analytics'?<><div className="page-head"><div><div className="eyebrow">PERFORMANCE INTELLIGENCE</div><h1>Advanced Analytics</h1><p>Daily, weekly and monthly WhatsApp delivery performance.</p></div></div><AdvancedAnalytics workspace={workspace}/></>::page==='Settings'?<SettingsPage currentUser={currentUser} workspace={workspace}/>:page==='WhatsApp API'?<WhatsAppPlatformPage workspace={workspace}/>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>Choose a module from the workspace menu.</p><button className="button primary" onClick={()=>setPage('Overview')}>Back to Overview <ArrowUpRight size={15}/></button></div>}
       </div>
       <footer><span>© 2026 MrSa Solutions</span><span><i/> Supabase contacts · v0.1.0</span></footer>
     </main>
