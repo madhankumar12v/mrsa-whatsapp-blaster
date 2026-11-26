@@ -432,7 +432,7 @@ export function ReportsPage({ contacts, exportCsv, workspace }) {
       </tbody></table>{!logsLoading&&!logsError&&!messageLogs.length&&<div className="empty"><MessageCircle size={25}/><b>No WhatsApp message records yet</b><span>Message activity will appear after a campaign is attempted.</span></div>}</div>
       <div style={{padding:'0 20px 16px',fontSize:12,color:'#8492a4'}}>Last refreshed: {logsUpdatedAt ? new Date(logsUpdatedAt).toLocaleString('en-IN') : 'Not yet loaded'}. Totals cover the latest 1,000 records, not lifetime totals.</div>
     </section>
-    <div className="compliance"><ShieldCheck size={17}/><div><b>Report scope</b><span>Contact figures reflect records loaded from this Supabase workspace. WhatsApp metrics reflect the latest 1,000 saved message attempts. Campaign drafts remain stored in this browser.</span></div></div>
+    <div className="compliance"><ShieldCheck size={17}/><div><b>Report scope</b><span>Contact figures reflect records loaded from this Supabase workspace. WhatsApp metrics reflect the latest 1,000 saved message attempts. Campaign drafts and campaign history are stored in this Supabase workspace.</span></div></div>
   </>;
 }
 
