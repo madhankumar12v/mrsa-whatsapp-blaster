@@ -116,10 +116,11 @@ export async function onRequestPost({ request, env }) {
     }
     const acceptedCount = results.filter(item => item.sent).length;
     const failedCount = results.filter(item => !item.sent).length;
+    const attemptedFailedCount = Math.max(0, recipients.length - acceptedCount);
     try {
       await db(env, "rpc/record_whatsapp_message_results", {
         method: "POST",
-        body: JSON.stringify({ p_workspace_id: workspaceId, p_accepted: acceptedCount, p_failed: failedCount })
+        body: JSON.stringify({ p_workspace_id: workspaceId, p_accepted: acceptedCount, p_failed: attemptedFailedCount })
       });
     } catch (error) { console.error("Could not update WhatsApp usage result totals", error?.message || error); }
     return reply({ requested: contactIds.length, sent: acceptedCount, failed: failedCount, uniqueRecipients: recipients.length, usage: { used: quota.used, limit: quota.monthly_limit, remaining: quota.remaining }, results });
