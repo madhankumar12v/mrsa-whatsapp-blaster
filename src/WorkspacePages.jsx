@@ -18,6 +18,9 @@ function Stat({ label, value, note, icon: Icon }) {
 function readDrafts() {
   try { return JSON.parse(localStorage.getItem('mrsa-campaign-drafts-v1') || '[]'); } catch { return []; }
 }
+function readLastSend() {
+  try { return JSON.parse(localStorage.getItem('mrsa-last-send-v1') || 'null'); } catch { return null; }
+}
 
 export function CampaignsPage({ contacts, notify, workspace }) {
   const [name, setName] = useState('');
@@ -33,6 +36,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState('');
   const [sending, setSending] = useState(false);
+  const [lastSend, setLastSend] = useState(readLastSend);
 
   async function syncMetaTemplates() {
     if (!workspace?.id) return;
@@ -73,7 +77,9 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       const response = await fetch('/api/whatsapp/send', { method:'POST', headers:{'content-type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({workspaceId:workspace.id,contactIds:targets.map(c=>c.id),templateName:templateName.trim(),language:templateLanguage.trim(),campaignCategory,parameters:templateParameters.trim()?templateParameters.split('|').map(value=>value.trim()):[]}) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Campaign request failed.');
-      const firstFailure=body.results?.find(item=>!item.sent); notify('WhatsApp send completed: '+body.sent+' sent, '+body.failed+' failed.'+(firstFailure?' First issue: '+firstFailure.reason:''));
+      const report = { createdAt: new Date().toISOString(), templateName: templateName.trim(), language: templateLanguage.trim(), requested: body.requested || targets.length, sent: body.sent || 0, failed: body.failed || 0, results: Array.isArray(body.results) ? body.results : [] };
+      setLastSend(report); localStorage.setItem('mrsa-last-send-v1', JSON.stringify(report));
+      const firstFailure=report.results.find(item=>!item.sent); notify('WhatsApp send completed: '+report.sent+' accepted by Meta, '+report.failed+' failed.'+(firstFailure?' First issue: '+firstFailure.reason:''));
     } catch (error) { notify(error.message || 'WhatsApp send failed.'); }
     finally { setSending(false); }
   }
@@ -93,7 +99,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <Stat label="Campaign drafts" value={drafts.length} note="Saved in this browser" icon={Megaphone}/>
       <Stat label="Eligible contacts" value={eligible} note="Explicitly opted in only" icon={Users}/>
       <Stat label="Excluded contacts" value={contacts.length - eligible} note="Pending and opted-out" icon={ShieldCheck}/>
-      <Stat label="Messages sent" value="0" note="WhatsApp API not connected" icon={MessageCircle}/>
+      <Stat label="Last run accepted" value={lastSend ? lastSend.sent : '—'} note={lastSend ? 'Accepted by Meta · not delivery-confirmed' : 'No send results yet'} icon={MessageCircle}/>
     </section>
     <section className="panel" style={{padding:20,marginBottom:18}}>
       <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Send an approved WhatsApp template</h2><p>Live sending uses Meta Cloud API. Only recorded opted-in Supabase contacts are eligible.</p></div></div>
@@ -119,6 +125,13 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         <div><button className="button primary" type="button" disabled={sending || !eligible || !templateName || !metaTemplates.some(item=>item.name===templateName&&item.language===templateLanguage&&item.status==='APPROVED')} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
       </div>
     </section>
+    {lastSend && <section className="panel" style={{marginBottom:18}}>
+      <div className="panel-head"><div><h2>Last WhatsApp send results</h2><p>{lastSend.templateName} · {lastSend.language} · {new Date(lastSend.createdAt).toLocaleString('en-IN')} · {lastSend.requested} requested</p></div><span className="count">{lastSend.sent} accepted · {lastSend.failed} failed</span></div>
+      <div className="table-scroll"><table><thead><tr><th>CONTACT</th><th>PHONE</th><th>RESULT</th><th>DETAILS</th><th>META MESSAGE ID</th></tr></thead><tbody>
+        {lastSend.results.map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);return <tr key={item.contactId||index}><td><b>{contact?.name || 'Contact record'}</b></td><td>{contact?.phone || '—'}</td><td><span className={'status '+(item.sent?'active':'pending')}>{item.sent?'Accepted by Meta':'Failed'}</span></td><td>{item.sent?'Message request accepted by Meta. Delivery status is not confirmed yet.':(item.reason || 'Meta rejected this message.')}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
+      </tbody></table></div>
+      <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>“Accepted by Meta” means the API accepted the message request; it does not prove delivery or reading. Final delivery requires a WhatsApp status webhook.</div>
+    </section>}
     <section className="panel" style={{padding:20}}>
       <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Create campaign draft</h2><p>Draft only. No WhatsApp messages will be sent from this page.</p></div></div>
       <form onSubmit={saveDraft} style={{display:'grid',gap:12,maxWidth:720}}>
@@ -133,7 +146,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         {drafts.map(item=><tr key={item.id}><td><b>{item.name}</b></td><td>{item.audience} ({item.category || 'Unspecified'})</td><td>{new Date(item.created).toLocaleDateString('en-IN')}</td><td><span className="status pending">Draft</span></td><td><button className="more" onClick={()=>{setName(item.name);setMessage(item.message);window.scrollTo({top:0,behavior:'smooth'});}}>Edit</button><button className="more" onClick={()=>removeDraft(item.id)}>Delete</button></td></tr>)}
       </tbody></table>{drafts.length===0&&<div className="empty"><Megaphone size={25}/><b>No campaign drafts</b><span>Create a draft above to get started.</span></div>}</div>
     </section>
-    <div className="compliance"><Activity size={17}/><div><b>Sending is not enabled yet</b><span>Connect and configure the official WhatsApp Business Platform before sending real campaigns. Never message contacts without valid consent.</span></div></div>
+    <div className="compliance"><Activity size={17}/><div><b>WhatsApp sending status</b><span>Live API requests are enabled. This page shows the latest per-contact API result; use Meta delivery-status webhooks to confirm delivered, read or undelivered states. Continue messaging only contacts with valid consent.</span></div></div>
   </>;
 }
 
