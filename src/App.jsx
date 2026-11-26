@@ -99,7 +99,7 @@ export default function App({currentUser,onLogout,workspace}){
     [c.name,c.phone,c.group].join(' ').toLowerCase().includes(query.toLowerCase()) &&
     (group==='All groups'||c.group===group) && (status==='All consent'||c.consent===status)
   ),[contacts,query,group,status]);
-  const duplicateGroups=useMemo(()=>{const map=new Map();contacts.forEach(c=>{const key=cleanPhone(c.phone).replace(/^\\+/,'');if(key){if(!map.has(key))map.set(key,[]);map.get(key).push(c);}});return [...map.entries()].filter(([,items])=>items.length>1).map(([phone,items])=>({phone,items}));},[contacts]);
+  const duplicateGroups=useMemo(()=>{const map=new Map();contacts.forEach(c=>{const key=cleanPhone(c.phone).replace(/\D/g,'');if(key){if(!map.has(key))map.set(key,[]);map.get(key).push(c);}});return [...map.entries()].filter(([,items])=>items.length>1).map(([phone,items])=>({phone,items}));},[contacts]);
   const optedIn=contacts.filter(c=>c.consent==='Opted in'&&c.consentAt&&c.source&&c.consentEvidence&&['marketing','utility','all'].includes(c.consentScope)).length;
   const optedOut=contacts.filter(c=>c.consent==='Opted out').length;
   const notify=message=>{setToast(message);window.clearTimeout(notify.timer);notify.timer=window.setTimeout(()=>setToast(''),4000);};
