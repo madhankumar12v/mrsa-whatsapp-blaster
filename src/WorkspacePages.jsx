@@ -35,6 +35,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [deliveryError, setDeliveryError] = useState('');
   const [deliverySearch, setDeliverySearch] = useState('');
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState('all');
+  const [lastDeliveryRefresh, setLastDeliveryRefresh] = useState(null);
 
   // Join the browser's immediate send response to the authoritative webhook log by Meta message ID.
   // Never join on phone number: one contact can receive multiple messages.
@@ -89,9 +90,16 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       setDeliveryLogs(Array.isArray(data) ? data : []);
     }
     setDeliveryLoading(false);
+    setLastDeliveryRefresh(new Date().toISOString());
   }
 
   useEffect(() => { loadDeliveryHistory(); }, [workspace?.id]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') loadDeliveryHistory();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [workspace?.id]);
 
   async function syncMetaTemplates() {
     if (!workspace?.id) return;
@@ -137,12 +145,69 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         const contact = contactById.get(item.contactId);
         return { ...item, contactName: contact?.name || item.contactName || 'Contact record', phone: contact?.phone || item.phone || '' };
       });
-      const report = { createdAt: new Date().toISOString(), templateName: templateName.trim(), language: templateLanguage.trim(), requested: body.requested ?? targets.length, sent: body.sent ?? 0, failed: body.failed ?? 0, results };
+      const report = { createdAt: new Date().toISOString(), templateName: templateName.trim(), language: templateLanguage.trim(), campaignCategory, parameters: templateParameters.trim() ? templateParameters.split('|').map(value => value.trim()) : [], requested: body.requested ?? targets.length, sent: body.sent ?? 0, failed: body.failed ?? 0, results };
       setLastSend(report); localStorage.setItem('mrsa-last-send-v1', JSON.stringify(report));
       const firstFailure=report.results.find(item=>!item.sent); notify('WhatsApp send completed: '+report.sent+' accepted by Meta, '+report.failed+' failed.'+(firstFailure?' First issue: '+firstFailure.reason:''));
     } catch (error) { notify(error.message || 'WhatsApp send failed.'); }
     finally { setSending(false); }
   }
+
+  async function retryFailedRecipients() {
+    const failedItems = (liveLastSend?.results || []).filter(item => item.liveStatus === 'failed' && item.contactId);
+    const contactIds = [...new Set(failedItems.map(item => item.contactId))].slice(0, 50);
+    if (!contactIds.length) { notify('There are no retryable failed recipients in the latest campaign.'); return; }
+    const category = lastSend?.campaignCategory || metaTemplates.find(item => item.name === lastSend?.templateName && item.language === lastSend?.language)?.category;
+    if (!category || !['marketing', 'utility'].includes(category)) {
+      notify('Cannot safely retry: the original campaign category is unavailable. Sync the approved Meta template and run a new campaign.');
+      return;
+    }
+    if (!window.confirm('Retry only these ' + contactIds.length + ' failed recipients using the same approved template? Current consent and subscription will be checked again before each message is sent.')) return;
+    setSending(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error('Please sign in again.');
+      const response = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({
+          workspaceId: workspace.id,
+          contactIds,
+          templateName: lastSend.templateName,
+          language: lastSend.language,
+          campaignCategory: category,
+          parameters: Array.isArray(lastSend.parameters) ? lastSend.parameters : []
+        })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Retry request failed.');
+      const contactById = new Map(contacts.map(contact => [contact.id, contact]));
+      const results = (Array.isArray(body.results) ? body.results : []).map(item => {
+        const contact = contactById.get(item.contactId);
+        return { ...item, contactName: contact?.name || 'Contact record', phone: contact?.phone || item.phone || '' };
+      });
+      const report = {
+        createdAt: new Date().toISOString(),
+        templateName: lastSend.templateName,
+        language: lastSend.language,
+        campaignCategory: category,
+        parameters: Array.isArray(lastSend.parameters) ? lastSend.parameters : [],
+        requested: body.requested ?? contactIds.length,
+        sent: body.sent ?? 0,
+        failed: body.failed ?? 0,
+        results
+      };
+      setLastSend(report);
+      localStorage.setItem('mrsa-last-send-v1', JSON.stringify(report));
+      await loadDeliveryHistory();
+      notify('Retry completed: ' + report.sent + ' accepted by Meta, ' + report.failed + ' failed. Only the selected failed recipients were retried.');
+    } catch (error) {
+      notify(error.message || 'Retry failed.');
+    } finally {
+      setSending(false);
+    }
+  }
+
   function saveDraft(event) {
     event.preventDefault();
     const next = [{ id: Date.now(), name: name.trim(), message: message.trim(), category: campaignCategory, audience: eligible, created: new Date().toISOString(), status: 'Draft' }, ...drafts];
@@ -188,7 +253,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     <section className="panel" style={{marginBottom:18}}>
       <div className="panel-head">
         <div><h2>WhatsApp delivery dashboard</h2><p>Latest 100 message attempts saved in this workspace. Delivery status updates arrive through Meta webhooks.</p></div>
-        <button className="button light" type="button" onClick={loadDeliveryHistory} disabled={deliveryLoading}><RefreshCw size={14}/>{deliveryLoading?'Refreshing…':'Refresh status'}</button>
+        <div style={{display:'grid',justifyItems:'end',gap:4}}><button className="button light" type="button" onClick={loadDeliveryHistory} disabled={deliveryLoading}><RefreshCw size={14}/>{deliveryLoading?'Refreshing…':'Refresh status'}</button><small style={{color:'#8492a4'}}>Auto-refreshes every 15 seconds{lastDeliveryRefresh?' · Updated '+new Date(lastDeliveryRefresh).toLocaleTimeString('en-IN'):''}</small></div>
       </div>
       <div className="stats" style={{padding:'0 20px 18px'}}>
         <Stat label="Total attempts" value={deliveryLogs.length} note="Saved message logs" icon={Activity}/>
@@ -196,7 +261,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         <Stat label="Read" value={deliveryLogs.filter(x=>x.status==='read').length} note="Read receipt received" icon={MessageCircle}/>
         <Stat label="Failed" value={deliveryLogs.filter(x=>x.status==='failed').length} note="Meta send or delivery failure" icon={X}/>
       </div>
-      {deliveryError && <div style={{padding:'0 20px 16px',fontSize:12,color:'#b45309'}}>Could not load delivery history: {deliveryError}. If this mentions a missing column, apply the new Supabase migration first.</div>}
+      {deliveryError && <div style={{padding:'0 20px 16px',fontSize:12,color:'#b45309'}}>Could not load delivery history: {deliveryError}. Check the Supabase connection and existing whatsapp_message_logs table permissions.</div>}
       <div className="toolbar" style={{borderTop:0}}>
         <label className="search" style={{width:'min(360px,100%)'}}><Search size={14}/><input value={deliverySearch} onChange={event=>setDeliverySearch(event.target.value)} placeholder="Search phone, template or message ID"/></label>
         <div className="filters">
@@ -217,7 +282,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>“Accepted” is not a delivery confirmation. “Delivered” and “Read” are confirmed by status webhooks. Failed attempts show the Meta error where available.</div>
     </section>
     {liveLastSend && <section className="panel" style={{marginBottom:18}}>
-      <div className="panel-head"><div><h2>Last WhatsApp send results</h2><p>{liveLastSend.templateName} · {liveLastSend.language} · {new Date(liveLastSend.createdAt).toLocaleString('en-IN')} · {liveLastSend.requested} requested</p></div><span className="count">{liveLastSend.results.filter(item=>item.liveStatus==='accepted').length} awaiting status · {liveLastSend.results.filter(item=>['delivered','read'].includes(item.liveStatus)).length} delivered · {liveLastSend.results.filter(item=>item.liveStatus==='failed').length} failed</span></div>
+      <div className="panel-head"><div><h2>Last WhatsApp send results</h2><p>{liveLastSend.templateName} · {liveLastSend.language} · {new Date(liveLastSend.createdAt).toLocaleString('en-IN')} · {liveLastSend.requested} requested</p></div><div className="head-actions"><button className="button light" type="button" onClick={retryFailedRecipients} disabled={sending || !liveLastSend.results.some(item=>item.liveStatus==='failed' && item.contactId)}><RefreshCw size={14}/>{sending?'Working…':'Retry failed only'}</button><span className="count">{liveLastSend.results.filter(item=>item.liveStatus==='accepted').length} awaiting status · {liveLastSend.results.filter(item=>['delivered','read'].includes(item.liveStatus)).length} delivered · {liveLastSend.results.filter(item=>item.liveStatus==='failed').length} failed</span></div></div>
       <div className="stats" style={{padding:'0 20px 18px'}}>
         <Stat label="Accepted" value={liveLastSend.results.filter(item=>item.liveStatus==='accepted').length} note="Waiting for webhook" icon={MessageCircle}/>
         <Stat label="Delivered" value={liveLastSend.results.filter(item=>['delivered','read'].includes(item.liveStatus)).length} note="Includes read receipts" icon={Check}/>
@@ -247,16 +312,67 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   </>;
 }
 
-export function ReportsPage({ contacts, exportCsv }) {
+export function ReportsPage({ contacts, exportCsv, workspace }) {
   const optedIn = contacts.filter(c=>c.consent==='Opted in').length;
   const pending = contacts.filter(c=>c.consent==='Pending').length;
   const optedOut = contacts.filter(c=>c.consent==='Opted out').length;
   const rows = [{label:'Opted in',value:optedIn,color:'#20b982'},{label:'Pending',value:pending,color:'#d69b43'},{label:'Opted out',value:optedOut,color:'#d36c65'}];
+  const [messageLogs, setMessageLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState('');
+  const [logsUpdatedAt, setLogsUpdatedAt] = useState(null);
+
+  async function loadMessageLogs() {
+    if (!workspace?.id) { setMessageLogs([]); return; }
+    setLogsLoading(true); setLogsError('');
+    const { data, error } = await supabase
+      .from('whatsapp_message_logs')
+      .select('id,recipient_phone,template_name,status,status_updated_at,created_at,meta_message_id,error_message,meta_error_code')
+      .eq('workspace_id', workspace.id)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    if (error) setLogsError(error.message || 'WhatsApp report could not be loaded.');
+    else setMessageLogs(Array.isArray(data) ? data : []);
+    setLogsUpdatedAt(new Date().toISOString());
+    setLogsLoading(false);
+  }
+
+  useEffect(() => { loadMessageLogs(); }, [workspace?.id]);
+
+  const statusCount = status => messageLogs.filter(item => String(item.status || '').toLowerCase() === status).length;
+  const delivered = messageLogs.filter(item => ['delivered','read'].includes(String(item.status || '').toLowerCase())).length;
+  const accepted = statusCount('accepted');
+  const failed = statusCount('failed');
+  const read = statusCount('read');
+
+  function exportMessageReport() {
+    const header = ['Phone number','Template','Status','Details','Meta error code','Last update','Meta message ID'];
+    const rows = messageLogs.map(item => [item.recipient_phone,item.template_name,item.status,item.error_message || '',item.meta_error_code || '',item.status_updated_at || item.created_at,item.meta_message_id || '']);
+    const csv = [header,...rows].map(row => row.map(value => '"' + String(value ?? '').replaceAll('"','""') + '"').join(',')).join(String.fromCharCode(13,10));
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'mrsa-whatsapp-report.csv'; link.click(); URL.revokeObjectURL(url);
+  }
+
   return <>
-    <PageHead eyebrow="WORKSPACE ANALYTICS" title="Reports" description="Review your audience size and messaging consent." action={<button className="button light" onClick={exportCsv}><ArrowDownToLine size={15}/> Export contacts report</button>}/>
-    <section className="stats"><Stat label="Total audience" value={contacts.length} note="Current contact records" icon={Users}/><Stat label="Opted in" value={optedIn} note="Eligible for campaigns" icon={ShieldCheck}/><Stat label="Pending consent" value={pending} note="Do not message" icon={Clock3}/><Stat label="Opted out" value={optedOut} note="Excluded from campaigns" icon={X}/></section>
+    <PageHead eyebrow="WORKSPACE ANALYTICS" title="Reports" description="Review contact consent and WhatsApp delivery performance." action={<div className="head-actions"><button className="button light" onClick={exportCsv}><ArrowDownToLine size={15}/> Export contacts</button><button className="button light" onClick={exportMessageReport} disabled={!messageLogs.length}><Download size={15}/> Export WhatsApp report</button></div>}/>
+    <section className="stats"><Stat label="Total audience" value={contacts.length} note="Current contact records" icon={Users}/><Stat label="Opted in" value={optedIn} note="Recorded opt-in status" icon={ShieldCheck}/><Stat label="Pending consent" value={pending} note="Do not message" icon={Clock3}/><Stat label="Opted out" value={optedOut} note="Excluded from campaigns" icon={X}/></section>
     <section className="panel"><div className="panel-head"><div><h2>Consent breakdown</h2><p>Contact records grouped by consent status.</p></div></div><div style={{padding:20,display:'grid',gap:17}}>{rows.map(row=><div key={row.label}><div className="report-row"><b>{row.label}</b><span>{row.value} ({contacts.length?Math.round(row.value/contacts.length*100):0}%)</span></div><div className="report-track"><div style={{width:(contacts.length?row.value/contacts.length*100:0)+'%',background:row.color}}/></div></div>)}</div></section>
-    <div className="compliance"><ShieldCheck size={17}/><div><b>Report scope</b><span>These figures reflect the contacts loaded from this Supabase workspace. Campaign drafts remain stored in this browser.</span></div></div>
+    <section className="panel" style={{marginTop:18}}>
+      <div className="panel-head"><div><h2>WhatsApp delivery performance</h2><p>Up to 1,000 most recent message attempts saved in Supabase.</p></div><button className="button light" onClick={loadMessageLogs} disabled={logsLoading}><RefreshCw size={14}/>{logsLoading?'Refreshing…':'Refresh report'}</button></div>
+      {logsError && <div style={{padding:'0 20px 16px',fontSize:12,color:'#b45309'}}>{logsError}</div>}
+      <div className="stats" style={{padding:'0 20px 18px'}}>
+        <Stat label="Total attempts" value={messageLogs.length} note="Saved message records" icon={Activity}/>
+        <Stat label="Accepted" value={accepted} note="Awaiting delivery confirmation" icon={MessageCircle}/>
+        <Stat label="Delivered" value={delivered} note="Includes read receipts" icon={Check}/>
+        <Stat label="Read" value={read} note="Read receipts received" icon={Activity}/>
+        <Stat label="Failed" value={failed} note="Send or delivery failures" icon={X}/>
+      </div>
+      <div className="table-scroll"><table><thead><tr><th>PHONE NUMBER</th><th>TEMPLATE</th><th>STATUS</th><th>DETAILS</th><th>LAST UPDATE</th></tr></thead><tbody>
+        {messageLogs.slice(0,12).map(item=><tr key={item.id}><td><b>{item.recipient_phone || '—'}</b></td><td>{item.template_name || '—'}</td><td><span className={'status '+(['delivered','read'].includes(String(item.status).toLowerCase())?'active':item.status==='failed'?'pending':'')}>{String(item.status || 'unknown').toUpperCase()}</span></td><td>{item.error_message || (item.status==='accepted'?'Accepted by Meta; delivery not yet confirmed.':'—')}{item.meta_error_code?' (Code: '+item.meta_error_code+')':''}</td><td>{new Date(item.status_updated_at || item.created_at).toLocaleString('en-IN')}</td></tr>)}
+      </tbody></table>{!logsLoading&&!logsError&&!messageLogs.length&&<div className="empty"><MessageCircle size={25}/><b>No WhatsApp message records yet</b><span>Message activity will appear after a campaign is attempted.</span></div>}</div>
+      <div style={{padding:'0 20px 16px',fontSize:12,color:'#8492a4'}}>Last refreshed: {logsUpdatedAt ? new Date(logsUpdatedAt).toLocaleString('en-IN') : 'Not yet loaded'}. Totals cover the latest 1,000 records, not lifetime totals.</div>
+    </section>
+    <div className="compliance"><ShieldCheck size={17}/><div><b>Report scope</b><span>Contact figures reflect records loaded from this Supabase workspace. WhatsApp metrics reflect the latest 1,000 saved message attempts. Campaign drafts remain stored in this browser.</span></div></div>
   </>;
 }
 
