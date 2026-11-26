@@ -69,7 +69,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   function exportDeliveryCsv() {
     const columns = ['phone_number','template','status','details','last_update','meta_message_id'];
     const rows = filteredDeliveryLogs.map(item => [item.recipient_phone, item.template_name, item.status, item.error_message || '', item.status_updated_at || item.created_at, item.meta_message_id]);
-    const csv = [columns, ...rows].map(row => row.map(value => '"' + String(value ?? '').replaceAll('"','""') + '"').join(',')).join('\\r\\n');
+    const csv = [columns, ...rows].map(row => row.map(value => '"' + String(value ?? '').replaceAll('"','""') + '"').join(',')).join(String.fromCharCode(13, 10));
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = 'mrsa-whatsapp-delivery.csv'; link.click(); URL.revokeObjectURL(url);
   }
