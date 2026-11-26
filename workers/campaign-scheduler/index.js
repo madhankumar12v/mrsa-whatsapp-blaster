@@ -54,7 +54,7 @@ async function processDraft(env,draft) {
         } catch(e) { errorMessage=e.message; }
       }
       if(status==="failed") failed++;
-      await db(env,"whatsapp_message_logs",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:workspaceId,contact_id:c?.id||id,created_by:draft.created_by,recipient_phone:to||digits(c?.phone),template_name:draft.template_name,meta_message_id:messageId,status,status_updated_at:new Date().toISOString(),error_message:errorMessage})});
+      try { await db(env,"whatsapp_message_logs",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:workspaceId,contact_id:c?.id||id,created_by:draft.created_by,recipient_phone:to||digits(c?.phone),template_name:draft.template_name,meta_message_id:messageId,status,status_updated_at:new Date().toISOString(),error_message:errorMessage})}); } catch(logError) { console.error("Could not save scheduled message log",id,logError); }
     }
     const finalStatus=failed===0?"completed":accepted===0?"failed":"partial";
     await db(env,"campaign_runs?id=eq."+encodeURIComponent(run.id),{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({accepted_count:accepted,failed_count:failed,status:finalStatus,completed_at:new Date().toISOString()})});
