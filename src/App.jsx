@@ -157,7 +157,7 @@ export default function App({currentUser,onLogout,workspace}){
         {page==='Overview'?<>
           <div className="page-head"><div><div className="eyebrow">BUSINESS WORKSPACE</div><h1>Admin Dashboard</h1><p>Welcome back, {currentUser?.name || 'Admin'}. Here is your workspace at a glance.</p></div><div className="head-actions"><button className="button primary" onClick={()=>setPage('Contacts')}><Users size={16}/> Manage contacts</button></div></div>
           <section className="stats">
-            <div className="stat"><div className="stat-label">Total contacts <span className="stat-icon purple"><Users size={17}/></span></div><strong>{contacts.length.toLocaleString('en-IN')}</strong><small>Saved in this workspace browser</small></div>
+            <div className="stat"><div className="stat-label">Total contacts <span className="stat-icon purple"><Users size={17}/></span></div><strong>{contacts.length.toLocaleString('en-IN')}</strong><small>Saved in Supabase workspace</small></div>
             <div className="stat"><div className="stat-label">Opted-in contacts <span className="stat-icon green"><ShieldCheck size={17}/></span></div><strong>{optedIn.toLocaleString('en-IN')}</strong><small className="good">Eligible audience</small></div>
             <div className="stat"><div className="stat-label">Opted-out <span className="stat-icon orange"><X size={17}/></span></div><strong>{optedOut.toLocaleString('en-IN')}</strong><small>Excluded from campaigns</small></div>
             <div className="stat"><div className="stat-label">Subscription <span className="stat-icon blue"><CreditCard size={17}/></span></div><strong>₹299</strong><small>Monthly plan after 30-day trial</small></div>
