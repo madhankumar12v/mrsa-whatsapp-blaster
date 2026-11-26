@@ -14,6 +14,13 @@ function readDrafts() {
 function readLastSend() {
   try { return JSON.parse(localStorage.getItem('mrsa-last-send-v1') || 'null'); } catch { return null; }
 }
+function normalizeRecipientPhone(value) {
+  let phone = String(value || '').replace(/[^0-9]/g, '');
+  if (phone.length === 10) phone = '91' + phone;
+  if (phone.startsWith('0') && phone.length === 11) phone = '91' + phone.slice(1);
+  if (phone.startsWith('0091') && phone.length === 14) phone = phone.slice(2);
+  return phone.length >= 8 && phone.length <= 15 && !phone.startsWith('0') ? phone : null;
+}
 
 export function CampaignsPage({ contacts, notify, workspace }) {
   const [name, setName] = useState('');
@@ -28,6 +35,31 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [campaignRuns, setCampaignRuns] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
+  const [monthlyUsage, setMonthlyUsage] = useState({ attempted: 0, accepted: 0, failed: 0, limit: null });
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [usageError, setUsageError] = useState('');
+  const usageMonth = new Date();
+  usageMonth.setUTCDate(1);
+  const usageMonthKey = usageMonth.toISOString().slice(0, 10);
+  async function loadMonthlyUsage() {
+    if (!workspace?.id) { setUsageLoading(false); return; }
+    setUsageLoading(true); setUsageError('');
+    const [usageResult, planResult] = await Promise.all([
+      supabase.from('whatsapp_monthly_usage').select('messages_attempted,messages_accepted,messages_failed').eq('workspace_id', workspace.id).eq('usage_month', usageMonthKey).maybeSingle(),
+      supabase.from('workspace_subscriptions').select('monthly_message_limit').eq('workspace_id', workspace.id).maybeSingle()
+    ]);
+    if (usageResult.error || planResult.error) {
+      setUsageError('Usage tracking is not available yet. Apply the campaign protection and usage migration.');
+    } else {
+      setMonthlyUsage({
+        attempted: usageResult.data?.messages_attempted || 0,
+        accepted: usageResult.data?.messages_accepted || 0,
+        failed: usageResult.data?.messages_failed || 0,
+        limit: planResult.data?.monthly_message_limit ?? null
+      });
+    }
+    setUsageLoading(false);
+  }
   async function loadCampaignDrafts() {
     if (!workspace?.id) { setDrafts([]); setDraftsLoading(false); return; }
     setDraftsLoading(true); setDraftsError('');
@@ -39,7 +71,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     else setDrafts(Array.isArray(data) ? data : []);
     setDraftsLoading(false);
   }
-  useEffect(() => { loadCampaignDrafts(); loadCampaignHistory(); }, [workspace?.id]);
+  useEffect(() => { loadCampaignDrafts(); loadCampaignHistory(); loadMonthlyUsage(); }, [workspace?.id]);
 
   async function loadCampaignHistory() {
     if (!workspace?.id) { setCampaignRuns([]); return; }
@@ -51,7 +83,15 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   }
 
   const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && ['marketing','utility','all'].includes(c.consentScope) && (c.consentScope === 'all' || c.consentScope === campaignCategory) && /^[0-9a-f-]{36}$/i.test(String(c.id)));
-  const eligible = eligibleContacts.length;
+  const seenEligiblePhones = new Set();
+  const uniqueEligibleContacts = eligibleContacts.filter(contact => {
+    const phone = normalizeRecipientPhone(contact.phone);
+    if (!phone || seenEligiblePhones.has(phone)) return false;
+    seenEligiblePhones.add(phone);
+    return true;
+  });
+  const duplicateEligibleCount = eligibleContacts.length - uniqueEligibleContacts.length;
+  const eligible = uniqueEligibleContacts.length;
   const [templateName, setTemplateName] = useState('');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
   const [templateParameters, setTemplateParameters] = useState('');
@@ -160,7 +200,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   async function sendApprovedTemplate() {
     if (!workspace?.id || !templateName.trim()) { notify('Enter your exact approved Meta template name.'); return; }
     if (!eligibleContacts.length) { notify('No contacts have complete, recorded opt-in evidence in Supabase.'); return; }
-    const targets = eligibleContacts.slice(0, 50);
+    const targets = uniqueEligibleContacts.slice(0, 50);
     if (!window.confirm('Send the approved template “' + templateName.trim() + '” to ' + targets.length + ' opted-in contacts now? This will send real WhatsApp messages.')) return;
     setSending(true);
     try {
@@ -187,6 +227,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       if (historySaveError) notify('Campaign sent, but its summary could not be saved to campaign history: ' + historySaveError.message);
       else await loadCampaignHistory();
       setLastSend(report); localStorage.setItem('mrsa-last-send-v1', JSON.stringify(report));
+      await loadMonthlyUsage();
       const firstFailure=report.results.find(item=>!item.sent); notify('WhatsApp send completed: '+report.sent+' accepted by Meta, '+report.failed+' failed.'+(firstFailure?' First issue: '+firstFailure.reason:''));
     } catch (error) { notify(error.message || 'WhatsApp send failed.'); }
     finally { setSending(false); }
@@ -253,11 +294,11 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     if (!workspace?.id) { notify('Workspace is not ready. Please refresh and try again.'); return; }
     if (!name.trim() || !message.trim()) { notify('Enter a campaign name and message before saving.'); return; }
     if (schedule && (!templateName.trim() || !metaTemplates.some(item => item.name === templateName && item.language === templateLanguage && item.status === 'APPROVED'))) { notify('Choose a synced, approved Meta template before scheduling.'); return; }
-    if (schedule && (!eligibleContacts.length || eligibleContacts.length > 50)) { notify('Scheduling requires 1–50 contacts with complete matching opt-in evidence.'); return; }
+    if (schedule && (!uniqueEligibleContacts.length || uniqueEligibleContacts.length > 50)) { notify('Scheduling requires 1–50 unique phone numbers with complete matching opt-in evidence.'); return; }
     if (schedule && (!scheduledAt || !Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())) { notify('Choose a future date and time for this campaign.'); return; }
     setDraftsSaving(true);
     const { data: authData } = await supabase.auth.getUser();
-    const payload = { workspace_id: workspace.id, name: name.trim(), message: message.trim(), category: campaignCategory, audience_count: schedule ? eligibleContacts.length : eligible, template_name: schedule ? templateName.trim() : null, template_language: schedule ? templateLanguage.trim() : null, template_parameters: schedule && templateParameters.trim() ? templateParameters.split('|').map(value => value.trim()) : [], contact_ids: schedule ? eligibleContacts.map(contact => contact.id) : [], scheduled_at: schedule ? new Date(scheduledAt).toISOString() : null, status: schedule ? 'scheduled' : 'draft', created_by: authData?.user?.id || null };
+    const payload = { workspace_id: workspace.id, name: name.trim(), message: message.trim(), category: campaignCategory, audience_count: schedule ? uniqueEligibleContacts.length : eligible, template_name: schedule ? templateName.trim() : null, template_language: schedule ? templateLanguage.trim() : null, template_parameters: schedule && templateParameters.trim() ? templateParameters.split('|').map(value => value.trim()) : [], contact_ids: schedule ? uniqueEligibleContacts.map(contact => contact.id) : [], scheduled_at: schedule ? new Date(scheduledAt).toISOString() : null, status: schedule ? 'scheduled' : 'draft', created_by: authData?.user?.id || null };
     const query = editingDraftId ? supabase.from('campaign_drafts').update(payload).eq('id', editingDraftId).eq('workspace_id', workspace.id) : supabase.from('campaign_drafts').insert(payload);
     const { data, error } = await query.select('id,name,message,category,audience_count,status,created_at,updated_at,scheduled_at,template_name,template_language').single();
     setDraftsSaving(false);
@@ -282,6 +323,11 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <Stat label="Eligible contacts" value={eligible} note="Explicitly opted in only" icon={Users}/>
       <Stat label="Excluded contacts" value={contacts.length - eligible} note="Pending and opted-out" icon={ShieldCheck}/>
       <Stat label="Last run accepted" value={lastSend ? lastSend.sent : '—'} note={lastSend ? 'Accepted by Meta · not delivery-confirmed' : 'No send results yet'} icon={MessageCircle}/>
+      <Stat label="This month sent attempts" value={usageLoading ? '…' : monthlyUsage.attempted} note={monthlyUsage.limit == null ? 'No monthly cap configured' : 'Of ' + monthlyUsage.limit + ' included messages'} icon={Activity}/>
+    </section>
+    <section className="panel" style={{padding:20,marginBottom:18}}>
+      <div className="panel-head" style={{padding:'0 0 12px'}}><div><h2>Monthly usage</h2><p>Usage is tracked against the UTC calendar month. Existing workspaces remain uncapped until a plan limit is configured.</p></div><button className="button light" type="button" onClick={loadMonthlyUsage} disabled={usageLoading}><RefreshCw size={14}/>{usageLoading?'Refreshing…':'Refresh usage'}</button></div>
+      {usageError ? <div style={{fontSize:12,color:'#b45309'}}>{usageError}</div> : <><div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',fontSize:13}}><b>{usageLoading?'Loading…':monthlyUsage.attempted.toLocaleString('en-IN')+' messages attempted'}</b><span style={{color:'#68778c'}}>{monthlyUsage.limit == null ? 'Unlimited until a plan cap is configured' : (Math.max(0,monthlyUsage.limit-monthlyUsage.attempted)).toLocaleString('en-IN')+' remaining of '+monthlyUsage.limit}</span></div>{monthlyUsage.limit != null && <div style={{height:8,background:'#e8edf4',borderRadius:20,overflow:'hidden',marginTop:10}}><div style={{height:'100%',width:Math.min(100,monthlyUsage.limit?monthlyUsage.attempted/monthlyUsage.limit*100:100)+'%',background:monthlyUsage.attempted>=monthlyUsage.limit?'#d97706':'#2563eb'}}/></div>}<div style={{display:'flex',gap:22,flexWrap:'wrap',marginTop:12,fontSize:12,color:'#68778c'}}><span>Accepted by Meta: <b>{monthlyUsage.accepted}</b></span><span>Failed attempts: <b>{monthlyUsage.failed}</b></span></div></>}
     </section>
     <section className="panel" style={{padding:20,marginBottom:18}}>
       <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Send an approved WhatsApp template</h2><p>Live sending uses Meta Cloud API. Only recorded opted-in Supabase contacts are eligible.</p></div></div>
@@ -303,7 +349,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         <small style={{color:'#68778c'}}>{metaTemplates.length} templates found · {metaTemplates.filter(item=>item.status==='APPROVED').length} approved and sendable. Active/quality-pending in WhatsApp Manager should appear as APPROVED in the API when eligible.</small>
         <label className="module-label">Template language code<input value={templateLanguage} readOnly/></label>
         <label className="module-label">Template body parameters (optional, in order)<input value={templateParameters} onChange={e=>setTemplateParameters(e.target.value)} placeholder="Example: Arun Kumar|Order 123"/></label><small style={{color:"#68778c"}}>Leave blank for templates without variables. Separate body values with a vertical bar (|).</small>
-        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} eligible contacts</b><span>Only contacts with complete opt-in evidence and {campaignCategory} consent (or All scope). Maximum 50 recipients per send.</span></div></div>
+        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} unique recipients ready · {duplicateEligibleCount} duplicate/invalid numbers excluded</b><span>Only contacts with complete opt-in evidence and {campaignCategory} consent (or All scope). Duplicate normalized phone numbers are excluded. Maximum 50 unique recipients per send.</span></div></div>
         <div><button className="button primary" type="button" disabled={sending || !eligible || !templateName || !metaTemplates.some(item=>item.name===templateName&&item.language===templateLanguage&&item.status==='APPROVED')} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
       </div>
     </section>
