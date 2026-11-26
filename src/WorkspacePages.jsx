@@ -32,7 +32,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     if (!workspace?.id) { setDrafts([]); setDraftsLoading(false); return; }
     setDraftsLoading(true); setDraftsError('');
     const { data, error } = await supabase.from('campaign_drafts')
-      .select('id,name,message,category,audience_count,status,created_at,updated_at')
+      .select('id,name,message,category,audience_count,status,created_at,updated_at,scheduled_at,template_name,template_language')
       .eq('workspace_id', workspace.id)
       .order('created_at', { ascending: false });
     if (error) { setDraftsError(error.message || 'Campaign drafts could not be loaded.'); setDrafts([]); }
@@ -176,6 +176,16 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         return { ...item, contactName: contact?.name || item.contactName || 'Contact record', phone: contact?.phone || item.phone || '' };
       });
       const report = { createdAt: new Date().toISOString(), templateName: templateName.trim(), language: templateLanguage.trim(), campaignCategory, parameters: templateParameters.trim() ? templateParameters.split('|').map(value => value.trim()) : [], requested: body.requested ?? targets.length, sent: body.sent ?? 0, failed: body.failed ?? 0, results };
+      const { data: auth } = await supabase.auth.getUser();
+      const { error: historySaveError } = await supabase.from('campaign_runs').insert({
+        workspace_id: workspace.id, campaign_name: name.trim() || templateName.trim(),
+        template_name: templateName.trim(), category: campaignCategory, language: templateLanguage.trim(),
+        parameters: report.parameters, audience_count: report.requested, accepted_count: report.sent,
+        failed_count: report.failed, status: report.failed ? (report.sent ? 'partial' : 'failed') : 'completed',
+        started_at: report.createdAt, completed_at: new Date().toISOString(), created_by: auth?.user?.id || null
+      });
+      if (historySaveError) notify('Campaign sent, but its summary could not be saved to campaign history: ' + historySaveError.message);
+      else await loadCampaignHistory();
       setLastSend(report); localStorage.setItem('mrsa-last-send-v1', JSON.stringify(report));
       const firstFailure=report.results.find(item=>!item.sent); notify('WhatsApp send completed: '+report.sent+' accepted by Meta, '+report.failed+' failed.'+(firstFailure?' First issue: '+firstFailure.reason:''));
     } catch (error) { notify(error.message || 'WhatsApp send failed.'); }
