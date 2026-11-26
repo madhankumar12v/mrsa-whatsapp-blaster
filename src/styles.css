@@ -120,3 +120,49 @@ td b{color:#26384e}
   .delivery-overview .panel-head{flex-direction:column}
   .delivery-overview .head-actions{width:100%;justify-content:space-between;align-items:center}
 }
+
+
+/* Advanced WhatsApp delivery analytics */
+.analytics-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:0 20px 18px}
+.analytics-pills{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.analytics-pill{border:1px solid #e5ebf0;background:#fff;color:#68778c;border-radius:8px;padding:8px 11px;font-size:10px;font-weight:700;cursor:pointer}
+.analytics-pill.selected{background:#eaf8f1;border-color:#bfe8d4;color:#16875e}
+.analytics-pills.compact .analytics-pill{padding:6px 9px}
+.analytics-dates{display:flex;gap:9px;flex-wrap:wrap}
+.analytics-dates label{display:flex;align-items:center;gap:6px;color:#77869a;font-size:10px}
+.analytics-dates input{border:1px solid #e3eaf0;border-radius:7px;padding:7px 8px;color:#34465b;font:inherit}
+.analytics-updated{font-size:10px;color:#8b98a9}
+.analytics-stats{grid-template-columns:repeat(5,minmax(0,1fr));padding:0 20px 18px}
+.analytics-stats .stat{min-height:96px;padding:13px}
+.analytics-stats .stat-label{display:flex;align-items:center;justify-content:space-between;gap:5px}
+.analytics-stats .stat-label svg{color:#7e91a5}
+.analytics-stats .stat>strong{font-size:23px}
+.analytics-section{padding:18px 20px;border-top:1px solid #edf1f5}
+.analytics-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.analytics-section-head>div:first-child{display:grid;gap:4px}
+.analytics-section-head b{font-size:12px;color:#26384e}
+.analytics-section-head span{font-size:10px;color:#8794a5}
+.analytics-section-head>svg{color:#d18c37}
+.analytics-chart{height:190px;display:flex;align-items:flex-end;gap:clamp(3px,1vw,12px);overflow-x:auto;padding:8px 2px 0;border-bottom:1px solid #e9eef2}
+.analytics-bar-group{flex:1;min-width:24px;max-width:70px;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:7px}
+.analytics-bars{height:155px;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:3px}
+.analytics-bar{display:block;width:min(36%,15px);min-height:0;border-radius:4px 4px 0 0}
+.analytics-bar.attempts,.analytics-legend i.attempts{background:#8b9bb0}
+.analytics-bar.delivered,.analytics-legend i.delivered{background:#20b982}
+.analytics-bar-group small{font-size:9px;color:#8492a4;white-space:nowrap}
+.analytics-legend{display:flex;gap:17px;justify-content:center;padding-top:12px}
+.analytics-legend span{display:flex;align-items:center;gap:6px;color:#7d8b9d;font-size:10px}
+.analytics-legend i{width:8px;height:8px;border-radius:2px}
+.analytics-bottom-grid{display:grid;grid-template-columns:1.15fr 1fr;border-top:1px solid #edf1f5}
+.analytics-bottom-grid .analytics-section{border-top:0;min-width:0}
+.failure-list{display:grid;gap:13px}
+.failure-item>div:first-child,.status-mix>div:first-child{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:6px}
+.failure-item span,.status-mix span{font-size:10px;color:#68778c;line-height:1.5;overflow-wrap:anywhere}
+.failure-item b,.status-mix b{font-size:11px;color:#26384e;white-space:nowrap}
+.failure-track{height:7px;border-radius:99px;background:#eef2f5;overflow:hidden}
+.failure-track i{display:block;height:100%;border-radius:99px;background:#d45b56}
+.status-mix{margin-bottom:13px}
+.analytics-empty{padding:22px 0;color:#8996a6;font-size:11px}
+.analytics-note{border-top:1px solid #edf1f5;padding:13px 20px 16px;color:#8492a4;font-size:10px;line-height:1.6}
+@media(max-width:900px){.analytics-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.analytics-toolbar{padding:0 14px 14px;align-items:flex-start;flex-direction:column}.analytics-stats{grid-template-columns:repeat(2,minmax(0,1fr));padding:0 12px 14px}.analytics-bottom-grid{grid-template-columns:1fr}.analytics-bottom-grid .analytics-section+.analytics-section{border-top:1px solid #edf1f5}.analytics-section{padding:15px 14px}.analytics-section-head{align-items:flex-start;flex-direction:column}.analytics-pills.compact{width:100%}.analytics-chart{gap:5px}.analytics-note{padding:12px 14px}}
