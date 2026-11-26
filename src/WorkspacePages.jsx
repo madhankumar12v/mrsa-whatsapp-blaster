@@ -19,7 +19,23 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [campaignCategory, setCampaignCategory] = useState('marketing');
-  const [drafts, setDrafts] = useState(readDrafts);
+  const [drafts, setDrafts] = useState([]);
+  const [draftsLoading, setDraftsLoading] = useState(true);
+  const [draftsSaving, setDraftsSaving] = useState(false);
+  const [draftsError, setDraftsError] = useState('');
+  async function loadCampaignDrafts() {
+    if (!workspace?.id) { setDrafts([]); setDraftsLoading(false); return; }
+    setDraftsLoading(true); setDraftsError('');
+    const { data, error } = await supabase.from('campaign_drafts')
+      .select('id,name,message,category,audience_count,status,created_at,updated_at')
+      .eq('workspace_id', workspace.id)
+      .order('created_at', { ascending: false });
+    if (error) { setDraftsError(error.message || 'Campaign drafts could not be loaded.'); setDrafts([]); }
+    else setDrafts(Array.isArray(data) ? data : []);
+    setDraftsLoading(false);
+  }
+  useEffect(() => { loadCampaignDrafts(); }, [workspace?.id]);
+
   const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && ['marketing','utility','all'].includes(c.consentScope) && (c.consentScope === 'all' || c.consentScope === campaignCategory) && /^[0-9a-f-]{36}$/i.test(String(c.id)));
   const eligible = eligibleContacts.length;
   const [templateName, setTemplateName] = useState('');
@@ -208,20 +224,31 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     }
   }
 
-  function saveDraft(event) {
+  async function saveDraft(event) {
     event.preventDefault();
-    const next = [{ id: Date.now(), name: name.trim(), message: message.trim(), category: campaignCategory, audience: eligible, created: new Date().toISOString(), status: 'Draft' }, ...drafts];
-    setDrafts(next); localStorage.setItem('mrsa-campaign-drafts-v1', JSON.stringify(next));
-    setName(''); setMessage(''); notify('Campaign draft saved.');
+    if (!workspace?.id) { notify('Workspace is not ready. Please refresh and try again.'); return; }
+    setDraftsSaving(true);
+    const { data: authData } = await supabase.auth.getUser();
+    const { data, error } = await supabase.from('campaign_drafts').insert({
+      workspace_id: workspace.id, name: name.trim(), message: message.trim(),
+      category: campaignCategory, audience_count: eligible, created_by: authData?.user?.id || null
+    }).select('id,name,message,category,audience_count,status,created_at,updated_at').single();
+    setDraftsSaving(false);
+    if (error) { notify('Draft could not be saved: ' + error.message); return; }
+    setDrafts(items => [data, ...items]);
+    setName(''); setMessage(''); notify('Campaign draft saved securely to this workspace.');
   }
-  function removeDraft(id) {
-    const next = drafts.filter(item => item.id !== id);
-    setDrafts(next); localStorage.setItem('mrsa-campaign-drafts-v1', JSON.stringify(next));
+  async function removeDraft(id) {
+    if (!window.confirm('Delete this campaign draft?')) return;
+    const { error } = await supabase.from('campaign_drafts').delete().eq('id', id).eq('workspace_id', workspace.id);
+    if (error) { notify('Draft could not be deleted: ' + error.message); return; }
+    setDrafts(items => items.filter(item => item.id !== id));
+    notify('Campaign draft deleted.');
   }
   return <>
     <PageHead eyebrow="MESSAGE BROADCASTS" title="Campaigns" description="Create and organize WhatsApp campaign drafts for opted-in contacts."/>
     <section className="stats">
-      <Stat label="Campaign drafts" value={drafts.length} note="Saved in this browser" icon={Megaphone}/>
+      <Stat label="Campaign drafts" value={drafts.length} note="Saved in Supabase workspace" icon={Megaphone}/>
       <Stat label="Eligible contacts" value={eligible} note="Explicitly opted in only" icon={Users}/>
       <Stat label="Excluded contacts" value={contacts.length - eligible} note="Pending and opted-out" icon={ShieldCheck}/>
       <Stat label="Last run accepted" value={lastSend ? lastSend.sent : '—'} note={lastSend ? 'Accepted by Meta · not delivery-confirmed' : 'No send results yet'} icon={MessageCircle}/>
@@ -300,13 +327,13 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         <label className="module-label">Campaign name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. November customer update"/></label>
         <label className="module-label">Message<textarea required rows="5" value={message} onChange={e=>setMessage(e.target.value)} placeholder="Write your WhatsApp message..."/></label>
         <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>Consent protection</b><span>Only {eligible} contacts with matching {campaignCategory} consent are eligible. Pending, opted-out and other-category contacts are excluded.</span></div></div>
-        <div><button className="button primary" type="submit"><Plus size={15}/> Save campaign draft</button></div>
+        <div><button className="button primary" type="submit" disabled={draftsSaving || !name.trim() || !message.trim()}><Plus size={15}/>{draftsSaving ? "Saving…" : "Save campaign draft"}</button></div>
       </form>
     </section>
-    <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2>Saved campaign drafts</h2><p>Drafts stored on this device.</p></div><span className="count">{drafts.length} drafts</span></div>
+    <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2>Saved campaign drafts</h2><p>Drafts are stored in Supabase and available across signed-in devices in this workspace.</p></div><span className="count">{drafts.length} drafts</span></div>{draftsError && <div style={{padding:"0 20px 14px",fontSize:12,color:"#b45309"}}>Draft storage issue: {draftsError}. Apply the campaign drafts migration in Supabase.</div>}
       <div className="table-scroll"><table><thead><tr><th>CAMPAIGN</th><th>ELIGIBLE AUDIENCE</th><th>CREATED</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>
-        {drafts.map(item=><tr key={item.id}><td><b>{item.name}</b></td><td>{item.audience} ({item.category || 'Unspecified'})</td><td>{new Date(item.created).toLocaleDateString('en-IN')}</td><td><span className="status pending">Draft</span></td><td><button className="more" onClick={()=>{setName(item.name);setMessage(item.message);window.scrollTo({top:0,behavior:'smooth'});}}>Edit</button><button className="more" onClick={()=>removeDraft(item.id)}>Delete</button></td></tr>)}
-      </tbody></table>{drafts.length===0&&<div className="empty"><Megaphone size={25}/><b>No campaign drafts</b><span>Create a draft above to get started.</span></div>}</div>
+        {drafts.map(item=><tr key={item.id}><td><b>{item.name}</b></td><td>{item.audience_count ?? 0} ({item.category || 'Unspecified'})</td><td>{new Date(item.created_at).toLocaleDateString('en-IN')}</td><td><span className="status pending">Draft</span></td><td><button className="more" onClick={()=>{setName(item.name);setMessage(item.message);setCampaignCategory(item.category || 'marketing');window.scrollTo({top:0,behavior:'smooth'});}}>Load into editor</button><button className="more" onClick={()=>removeDraft(item.id)}>Delete</button></td></tr>)}
+      </tbody></table>{!draftsLoading && drafts.length===0&&<div className="empty"><Megaphone size={25}/><b>No campaign drafts</b><span>Create a draft above to get started.</span></div>}</div>
     </section>
     <div className="compliance"><Activity size={17}/><div><b>WhatsApp sending status</b><span>Live API requests are enabled. This page shows the latest per-contact API result; use Meta delivery-status webhooks to confirm delivered, read or undelivered states. Continue messaging only contacts with valid consent.</span></div></div>
   </>;
