@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabase.js';
-import { Activity, ArrowDownToLine, Check, Clock3, Megaphone, MessageCircle, Plus, RefreshCw, ShieldCheck, Users, X } from 'lucide-react';
+import { Activity, ArrowDownToLine, Check, Clock3, Download, Megaphone, MessageCircle, Plus, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
 
 function PageHead({ eyebrow, title, description, action }) {
   return <div className="page-head"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{action && <div className="head-actions">{action}</div>}</div>;
@@ -33,6 +33,46 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [deliveryLogs, setDeliveryLogs] = useState([]);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
+  const [deliverySearch, setDeliverySearch] = useState('');
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState('all');
+
+  // Join the browser's immediate send response to the authoritative webhook log by Meta message ID.
+  // Never join on phone number: one contact can receive multiple messages.
+  const liveLastSend = useMemo(() => {
+    if (!lastSend) return null;
+    const logsByMessageId = new Map(deliveryLogs.filter(log => log.meta_message_id).map(log => [log.meta_message_id, log]));
+    return { ...lastSend, results: (lastSend.results || []).map(item => {
+      const log = item.messageId ? logsByMessageId.get(item.messageId) : null;
+      if (!log) return { ...item, liveStatus: item.sent ? 'accepted' : 'failed' };
+      return {
+        ...item,
+        liveStatus: log.status || (item.sent ? 'accepted' : 'failed'),
+        liveDetails: log.error_message || null,
+        liveUpdatedAt: log.status_updated_at || log.created_at || null,
+        liveErrorCode: log.meta_error_code || null,
+        liveErrorDetails: log.meta_error_details || null
+      };
+    }) };
+  }, [lastSend, deliveryLogs]);
+
+  const deliveredCount = deliveryLogs.filter(item => ['delivered', 'read'].includes(String(item.status || '').toLowerCase())).length;
+  const filteredDeliveryLogs = useMemo(() => {
+    const query = deliverySearch.trim().toLowerCase();
+    return deliveryLogs.filter(item => {
+      const status = String(item.status || '').toLowerCase();
+      const matchesStatus = deliveryStatusFilter === 'all' || (deliveryStatusFilter === 'delivered' ? ['delivered','read'].includes(status) : status === deliveryStatusFilter);
+      const haystack = [item.recipient_phone, item.template_name, item.meta_message_id, item.status].join(' ').toLowerCase();
+      return matchesStatus && (!query || haystack.includes(query));
+    });
+  }, [deliveryLogs, deliverySearch, deliveryStatusFilter]);
+
+  function exportDeliveryCsv() {
+    const columns = ['phone_number','template','status','details','last_update','meta_message_id'];
+    const rows = filteredDeliveryLogs.map(item => [item.recipient_phone, item.template_name, item.status, item.error_message || '', item.status_updated_at || item.created_at, item.meta_message_id]);
+    const csv = [columns, ...rows].map(row => row.map(value => '"' + String(value ?? '').replaceAll('"','""') + '"').join(',')).join(String.fromCharCode(13, 10));
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'mrsa-whatsapp-delivery.csv'; link.click(); URL.revokeObjectURL(url);
+  }
 
   async function loadDeliveryHistory() {
     if (!workspace?.id) { setDeliveryLogs([]); return; }
@@ -152,13 +192,20 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       </div>
       <div className="stats" style={{padding:'0 20px 18px'}}>
         <Stat label="Total attempts" value={deliveryLogs.length} note="Saved message logs" icon={Activity}/>
-        <Stat label="Delivered" value={deliveryLogs.filter(x=>x.status==='delivered').length} note="Confirmed by WhatsApp" icon={Check}/>
+        <Stat label="Delivered" value={deliveredCount} note="Delivered, including read" icon={Check}/>
         <Stat label="Read" value={deliveryLogs.filter(x=>x.status==='read').length} note="Read receipt received" icon={MessageCircle}/>
         <Stat label="Failed" value={deliveryLogs.filter(x=>x.status==='failed').length} note="Meta send or delivery failure" icon={X}/>
       </div>
       {deliveryError && <div style={{padding:'0 20px 16px',fontSize:12,color:'#b45309'}}>Could not load delivery history: {deliveryError}. If this mentions a missing column, apply the new Supabase migration first.</div>}
+      <div className="toolbar" style={{borderTop:0}}>
+        <label className="search" style={{width:'min(360px,100%)'}}><Search size={14}/><input value={deliverySearch} onChange={event=>setDeliverySearch(event.target.value)} placeholder="Search phone, template or message ID"/></label>
+        <div className="filters">
+          <label><span style={{fontSize:10}}>Status</span><select value={deliveryStatusFilter} onChange={event=>setDeliveryStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="accepted">Accepted</option><option value="delivered">Delivered + read</option><option value="read">Read only</option><option value="failed">Failed</option></select></label>
+          <button className="button light" type="button" onClick={exportDeliveryCsv} disabled={!filteredDeliveryLogs.length}><Download size={14}/> Export CSV</button>
+        </div>
+      </div>
       <div className="table-scroll"><table><thead><tr><th>PHONE NUMBER</th><th>TEMPLATE</th><th>STATUS</th><th>DETAILS</th><th>LAST UPDATE</th><th>META MESSAGE ID</th></tr></thead><tbody>
-        {deliveryLogs.map(item=><tr key={item.id}>
+        {filteredDeliveryLogs.map(item=><tr key={item.id}>
           <td><b>{item.recipient_phone || '—'}</b></td>
           <td>{item.template_name || '—'}</td>
           <td><span className={'status '+(['delivered','read'].includes(item.status)?'active':item.status==='failed'?'pending':'')}>{String(item.status || 'unknown').replaceAll('_',' ').toUpperCase()}</span></td>
@@ -166,15 +213,21 @@ export function CampaignsPage({ contacts, notify, workspace }) {
           <td>{new Date(item.status_updated_at || item.created_at).toLocaleString('en-IN')}</td>
           <td><small>{item.meta_message_id || '—'}</small></td>
         </tr>)}
-      </tbody></table>{!deliveryLoading&&!deliveryError&&deliveryLogs.length===0&&<div className="empty"><MessageCircle size={25}/><b>No WhatsApp delivery records yet</b><span>After a campaign attempt, each saved result will appear here.</span></div>}</div>
+      </tbody></table>{!deliveryLoading&&!deliveryError&&deliveryLogs.length===0&&<div className="empty"><MessageCircle size={25}/><b>No WhatsApp delivery records yet</b><span>After a campaign attempt, each saved result will appear here.</span></div>}{!deliveryLoading&&!deliveryError&&deliveryLogs.length>0&&filteredDeliveryLogs.length===0&&<div className="empty"><Search size={25}/><b>No matching message attempts</b><span>Try another search term or status filter.</span></div>}</div>
       <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>“Accepted” is not a delivery confirmation. “Delivered” and “Read” are confirmed by status webhooks. Failed attempts show the Meta error where available.</div>
     </section>
-    {lastSend && <section className="panel" style={{marginBottom:18}}>
-      <div className="panel-head"><div><h2>Last WhatsApp send results</h2><p>{lastSend.templateName} · {lastSend.language} · {new Date(lastSend.createdAt).toLocaleString('en-IN')} · {lastSend.requested} requested</p></div><span className="count">{lastSend.sent} accepted · {lastSend.failed} failed</span></div>
-      <div className="table-scroll"><table><thead><tr><th>CONTACT</th><th>PHONE</th><th>RESULT</th><th>DETAILS</th><th>META MESSAGE ID</th></tr></thead><tbody>
-        {lastSend.results.map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);return <tr key={item.contactId||index}><td><b>{item.contactName || contact?.name || 'Contact record'}</b></td><td>{item.phone || contact?.phone || '—'}</td><td><span className={'status '+(item.sent?'active':'pending')}>{item.sent?'Accepted by Meta':'Failed'}</span></td><td>{item.sent?'Message request accepted by Meta. Delivery status is not confirmed yet.':(item.reason || 'Meta rejected this message.')}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
+    {liveLastSend && <section className="panel" style={{marginBottom:18}}>
+      <div className="panel-head"><div><h2>Last WhatsApp send results</h2><p>{liveLastSend.templateName} · {liveLastSend.language} · {new Date(liveLastSend.createdAt).toLocaleString('en-IN')} · {liveLastSend.requested} requested</p></div><span className="count">{liveLastSend.results.filter(item=>item.liveStatus==='accepted').length} awaiting status · {liveLastSend.results.filter(item=>['delivered','read'].includes(item.liveStatus)).length} delivered · {liveLastSend.results.filter(item=>item.liveStatus==='failed').length} failed</span></div>
+      <div className="stats" style={{padding:'0 20px 18px'}}>
+        <Stat label="Accepted" value={liveLastSend.results.filter(item=>item.liveStatus==='accepted').length} note="Waiting for webhook" icon={MessageCircle}/>
+        <Stat label="Delivered" value={liveLastSend.results.filter(item=>['delivered','read'].includes(item.liveStatus)).length} note="Includes read receipts" icon={Check}/>
+        <Stat label="Read" value={liveLastSend.results.filter(item=>item.liveStatus==='read').length} note="Recipient read receipt" icon={Activity}/>
+        <Stat label="Failed" value={liveLastSend.results.filter(item=>item.liveStatus==='failed').length} note="Send or delivery failure" icon={X}/>
+      </div>
+      <div className="table-scroll"><table><thead><tr><th>CONTACT</th><th>PHONE</th><th>RESULT</th><th>DETAILS</th><th>LAST UPDATE</th><th>META MESSAGE ID</th></tr></thead><tbody>
+        {liveLastSend.results.map((item,index)=>{const contact=contacts.find(c=>c.id===item.contactId);const status=item.liveStatus|| (item.sent?'accepted':'failed');const label=status==='accepted'?'Accepted by Meta':status==='delivered'?'Delivered':status==='read'?'Read':'Failed';const details=item.liveDetails || (status==='read'?'Read receipt received.':status==='delivered'?'Delivered to recipient.':status==='accepted'?'Accepted by Meta; waiting for delivery confirmation.':item.reason || 'Meta rejected this message.');return <tr key={item.contactId||index}><td><b>{item.contactName || contact?.name || 'Contact record'}</b></td><td>{item.phone || contact?.phone || '—'}</td><td><span className={'status '+(status==='failed'?'pending':'active')}>{label}</span></td><td>{details}{item.liveErrorCode?' (Code: '+item.liveErrorCode+')':''}{item.liveErrorDetails?' · '+item.liveErrorDetails:''}</td><td>{item.liveUpdatedAt?new Date(item.liveUpdatedAt).toLocaleString('en-IN'):'—'}</td><td><small>{item.messageId || '—'}</small></td></tr>;})}
       </tbody></table></div>
-      <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>“Accepted by Meta” means the API accepted the message request; it does not prove delivery or reading. Final delivery requires a WhatsApp status webhook.</div>
+      <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>This panel combines the initial Meta API response with the latest webhook status, matched by the exact Meta message ID. Refresh status to load the newest delivery updates.</div>
     </section>}
     <section className="panel" style={{padding:20}}>
       <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Create campaign draft</h2><p>Draft only. No WhatsApp messages will be sent from this page.</p></div></div>
