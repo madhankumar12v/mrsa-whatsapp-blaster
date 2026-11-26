@@ -102,6 +102,10 @@ returns trigger language plpgsql security definer set search_path=''
 as $$
 declare wid uuid; action_name text; target text; details_json jsonb;
 begin
+ if auth.uid() is null then
+   if tg_op='DELETE' then return old; end if;
+   return new;
+ end if;
  if tg_op='DELETE' then wid:=old.workspace_id; target:=old.user_id::text; details_json:=jsonb_build_object('role',old.role); action_name:='team.member_removed';
  elsif tg_op='UPDATE' then wid:=new.workspace_id; target:=new.user_id::text; details_json:=jsonb_build_object('old_role',old.role,'new_role',new.role); action_name:='team.role_changed';
  else wid:=new.workspace_id; target:=new.user_id::text; details_json:=jsonb_build_object('role',new.role); action_name:='team.member_added';
