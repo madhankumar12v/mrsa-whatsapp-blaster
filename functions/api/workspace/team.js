@@ -18,6 +18,7 @@ export async function onRequestPost({request,env}) {
   const invited=await response.json().catch(()=>({}));
   if(!response.ok||!invited.id) return reply({error:invited.msg||invited.message||invited.error_description||"Invitation could not be sent. The email may already belong to an account."},400);
   await db(env,"workspace_memberships",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:workspaceId,user_id:invited.id,role})});
+  await db(env,"security_audit_logs",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:workspaceId,actor_user_id:actor.id,action:"team.member_invited",target_type:"workspace_member",target_id:invited.id,details:{email,role}})});
   return reply({ok:true,message:"Invitation sent to "+email+" with "+role+" role."});
  }catch(e){return err(e);}
 }
