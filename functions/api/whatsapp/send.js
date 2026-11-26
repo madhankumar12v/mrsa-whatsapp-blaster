@@ -13,7 +13,7 @@ export async function onRequestPost({ request, env }) {
     const parameters = Array.isArray(body.parameters) ? body.parameters.slice(0, 10).map(v => String(v).slice(0, 500)) : [];
     if (!/^[a-z0-9_]{1,128}$/.test(templateName)) return reply({ error: "Use the exact name of an approved WhatsApp template." }, 400);
     if (!["marketing", "utility"].includes(campaignCategory)) return reply({ error: "Select Marketing or Utility for this campaign." }, 400);
-    if (!/^[a-z]{2}_[A-Z]{2}$/.test(language)) return reply({ error: "Invalid template language code." }, 400);
+    if (!/^[a-z]{2}(?:_[A-Z]{2})?$/.test(language)) return reply({ error: "Invalid template language code. Use the exact language returned by Meta (for example, en or en_US)." }, 400);
     if (!contactIds.length || contactIds.length > 50 || contactIds.some(id => !/^[0-9a-f-]{36}$/i.test(id))) return reply({ error: "Select between 1 and 50 valid saved contacts." }, 400);
     await requireWorkspaceAdmin(env, user.id, workspaceId);
 
