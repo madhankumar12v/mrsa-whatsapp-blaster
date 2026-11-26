@@ -18,5 +18,7 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Validate campaign scheduler Worker syntax
+        run: node --check workers/campaign-scheduler/index.js
       - name: Build production bundle
         run: npm run build
