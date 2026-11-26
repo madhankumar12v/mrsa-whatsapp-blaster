@@ -88,7 +88,8 @@ begin
     where workspace_id=old.workspace_id and role='admin';
    if admin_count <= 1 then raise exception 'A workspace must retain at least one administrator.'; end if;
  end if;
- return case when tg_op='DELETE' then old else new end;
+ if tg_op='DELETE' then return old; end if;
+ return new;
 end;
 $$;
 drop trigger if exists guard_workspace_membership_admin_trigger on public.workspace_memberships;
@@ -124,7 +125,7 @@ begin
   case when tg_op='INSERT' then 'billing.payment_submitted' else 'billing.payment_reviewed' end,
   'manual_payment',coalesce(new.id,old.id)::text,
   jsonb_build_object('status',coalesce(new.status,old.status),'amount_paise',coalesce(new.amount_paise,old.amount_paise)));
- return coalesce(new,old);
+ return new;
 end;
 $$;
 drop trigger if exists manual_payment_audit_trigger on public.manual_payment_submissions;
