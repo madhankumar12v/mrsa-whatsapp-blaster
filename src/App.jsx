@@ -38,7 +38,8 @@ export default function App({currentUser,onLogout,workspace}){
   const [toast,setToast]=useState('');
   const [form,setForm]=useState({name:'',phone:'',group:'Customers',consent:'Pending',consentSource:'',consentEvidence:'',consentScope:'',consentAt:''});
   const fileRef=useRef(null);
-  const save=items=>{setContacts(items);localStorage.setItem('mrsa-contacts-v1',JSON.stringify(items));};
+  const save=items=>{setContacts(items);};
+  useEffect(()=>{ try { localStorage.removeItem('mrsa-contacts-v1'); } catch {} },[]);
   useEffect(()=>{
     let alive=true;
     async function loadWorkspaceContacts(){
@@ -47,7 +48,7 @@ export default function App({currentUser,onLogout,workspace}){
       const {data,error}=await supabase.from('contacts').select('id,full_name,phone,group_name,consent_status,consent_source,consent_evidence,consent_scope,consent_at,opted_out_at,updated_at').eq('workspace_id',workspace.id).order('created_at',{ascending:false}).limit(2000);
       if(!alive)return;
       if(error){notify('Contacts could not be loaded from Supabase: '+error.message);setContacts([]);}
-      else {const rows=(data||[]).map(mapContact);setContacts(rows);localStorage.setItem('mrsa-contacts-v1',JSON.stringify(rows));}
+      else {const rows=(data||[]).map(mapContact);setContacts(rows);}
       setContactsLoading(false);
     }
     loadWorkspaceContacts();
@@ -193,7 +194,7 @@ export default function App({currentUser,onLogout,workspace}){
             <div className="table-foot"><span>Showing <b>{visible.length?1:0}–{visible.length}</b> of <b>{contacts.length}</b> contacts</span><span><ShieldCheck size={13}/> Synced with Supabase</span></div>
           </section>
           <div className="compliance"><ShieldCheck size={18}/><div><b>Consent-first messaging</b><span>Only message people who explicitly opted in. Store the original consent date, source and evidence; pending and opted-out contacts must be excluded from campaigns.</span></div><button onClick={()=>notify('WhatsApp consent guidance will be included in the compliance documentation.')}>Learn more <ArrowUpRight size={13}/></button></div>
-        </>:page==='Campaigns'?<CampaignsPage contacts={contacts} notify={notify} workspace={workspace}/>:page==='Reports'?<ReportsPage contacts={contacts} exportCsv={exportCsv}/> :page==='Settings'?<SettingsPage currentUser={currentUser} workspace={workspace}/>:page==='WhatsApp API'?<WhatsAppPlatformPage workspace={workspace}/>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>Choose a module from the workspace menu.</p><button className="button primary" onClick={()=>setPage('Overview')}>Back to Overview <ArrowUpRight size={15}/></button></div>}
+        </>:page==='Campaigns'?<CampaignsPage contacts={contacts} notify={notify} workspace={workspace}/>:page==='Reports'?<ReportsPage contacts={contacts} exportCsv={exportCsv} workspace={workspace}/> :page==='Settings'?<SettingsPage currentUser={currentUser} workspace={workspace}/>:page==='WhatsApp API'?<WhatsAppPlatformPage workspace={workspace}/>:page==='Billing'?<Billing workspace={workspace} currentUser={currentUser}/>:<div className="placeholder"><div className="placeholder-icon"><LayoutDashboard size={25}/></div><div className="eyebrow">MRSA BLASTER WORKSPACE</div><h1>{page}</h1><p>Choose a module from the workspace menu.</p><button className="button primary" onClick={()=>setPage('Overview')}>Back to Overview <ArrowUpRight size={15}/></button></div>}
       </div>
       <footer><span>© 2026 MrSa Solutions</span><span><i/> Supabase contacts · v0.1.0</span></footer>
     </main>
