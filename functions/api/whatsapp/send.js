@@ -1,4 +1,4 @@
-import { authenticate, cleanPhone, db, errorResponse, graphRequest, reply, requireWorkspaceAdmin } from "../../_lib/whatsapp.js";
+import { authenticate, normalizeWhatsAppPhone, db, errorResponse, graphRequest, reply, requireWorkspaceAdmin } from "../../_lib/whatsapp.js";
 
 export async function onRequestPost({ request, env }) {
   try {
@@ -47,9 +47,9 @@ export async function onRequestPost({ request, env }) {
         results.push({ contactId, sent: false, reason: "Consent category mismatch: this template is " + templateCategory + ", but the contact consent covers " + contact.consent_scope + "." });
         continue;
       }
-      const to = cleanPhone(contact.phone);
-      if (to.length < 8 || to.length > 15) {
-        results.push({ contactId, sent: false, reason: "Contact phone number is invalid." });
+      const to = normalizeWhatsAppPhone(contact.phone);
+      if (!to) {
+        results.push({ contactId, phone: contact.phone, sent: false, reason: "Invalid phone number. Enter a valid international number; Indian 10-digit mobile numbers are automatically prefixed with 91." });
         continue;
       }
       const components = parameters.length ? [{ type: "body", parameters: parameters.map(text => ({ type: "text", text })) }] : [];
@@ -66,7 +66,8 @@ export async function onRequestPost({ request, env }) {
           })
         });
       } catch (error) {
-        results.push({ contactId, sent: false, reason: error.meta || "Meta rejected this message." });
+        console.error("WhatsApp Meta send failed", { contactId, recipient: to, message: error.meta, code: error.code, subcode: error.subcode, type: error.type, details: error.details, fbtraceId: error.fbtraceId });
+        results.push({ contactId, phone: to, sent: false, reason: error.meta || "Meta rejected this message.", errorCode: error.code || null, errorSubcode: error.subcode || null, errorType: error.type || null, errorDetails: error.details || null, fbtraceId: error.fbtraceId || null });
         continue;
       }
       const messageId = sent?.messages?.[0]?.id || null;
@@ -78,7 +79,7 @@ export async function onRequestPost({ request, env }) {
           body: JSON.stringify({ workspace_id: workspaceId, contact_id: contact.id, created_by: user.id, recipient_phone: to, template_name: templateName, meta_message_id: messageId, status: "accepted" })
         });
       } catch { logSaved = false; }
-      results.push({ contactId, sent: true, messageId, logSaved });
+      results.push({ contactId, phone: to, sent: true, status: "accepted", messageId, logSaved, logWarning: logSaved ? null : "Meta accepted the message, but its delivery log could not be saved." });
     }
     return reply({ requested: contactIds.length, sent: results.filter(r => r.sent).length, failed: results.filter(r => !r.sent).length, results });
   } catch (error) { return errorResponse(error); }
