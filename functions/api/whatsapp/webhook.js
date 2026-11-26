@@ -39,7 +39,11 @@ export async function onRequestPost({ request, env }) {
           const statusTimestamp = Number(status.timestamp || 0);
           const update = { status: status.status || "unknown", status_updated_at: statusTimestamp > 0 ? new Date(statusTimestamp * 1000).toISOString() : new Date().toISOString() };
           if (status.status === "failed") {
-            console.error("WhatsApp delivery failed", { messageId: status.id, recipientId: status.recipient_id || null, errors: (status.errors || []).map(item => ({ code: item.code || null, title: item.title || null, message: item.message || null, details: item.error_data?.details || null })) });
+            const errors = (status.errors || []).map(item => ({ code: item.code || null, title: item.title || null, message: item.message || null, details: item.error_data?.details || null }));
+            update.error_message = errors.map(item => [item.title, item.message, item.details].filter(Boolean).join(": ")).join(" | ") || "WhatsApp could not deliver this message.";
+            update.meta_error_code = errors.map(item => item.code).filter(Boolean).join(",");
+            update.meta_error_details = errors.map(item => item.details).filter(Boolean).join(" | ");
+            console.error("WhatsApp delivery failed", { messageId: status.id, recipientId: status.recipient_id || null, errors });
           }
           await db(env, "whatsapp_message_logs?meta_message_id=eq." + encodeURIComponent(status.id), {
             method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(update)
