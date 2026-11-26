@@ -1,13 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabase.js';
-import { Activity, ArrowDownToLine, Check, Clock3, Copy, FileText, Megaphone, MessageCircle, Plus, RefreshCw, ShieldCheck, Users, X } from 'lucide-react';
-
-const starterTemplates = [
-  { name: 'Welcome message', category: 'Customer care', body: 'Hello {{name}}, welcome! Thank you for connecting with us. How can we help you today?' },
-  { name: 'Order update', category: 'Updates', body: 'Hello {{name}}, your order update is ready. Please contact our team if you need any assistance.' },
-  { name: 'Appointment reminder', category: 'Reminders', body: 'Hello {{name}}, this is a friendly reminder about your upcoming appointment. Reply if you need to reschedule.' },
-  { name: 'Thank you', category: 'Customer care', body: 'Hello {{name}}, thank you for choosing us. We appreciate your support!' }
-];
+import { Activity, ArrowDownToLine, Check, Clock3, Megaphone, MessageCircle, Plus, RefreshCw, ShieldCheck, Users, X } from 'lucide-react';
 
 function PageHead({ eyebrow, title, description, action }) {
   return <div className="page-head"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{action && <div className="head-actions">{action}</div>}</div>;
@@ -147,49 +140,6 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       </tbody></table>{drafts.length===0&&<div className="empty"><Megaphone size={25}/><b>No campaign drafts</b><span>Create a draft above to get started.</span></div>}</div>
     </section>
     <div className="compliance"><Activity size={17}/><div><b>WhatsApp sending status</b><span>Live API requests are enabled. This page shows the latest per-contact API result; use Meta delivery-status webhooks to confirm delivered, read or undelivered states. Continue messaging only contacts with valid consent.</span></div></div>
-  </>;
-}
-
-export function TemplatesPage({ notify, workspace }) {
-  const [selected, setSelected] = useState(starterTemplates[0].name);
-  const [metaTemplates, setMetaTemplates] = useState([]);
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState('');
-  const current = starterTemplates.find(item => item.name === selected) || starterTemplates[0];
-
-  async function syncMetaTemplates() {
-    if (!workspace?.id) return;
-    setSyncing(true); setSyncError('');
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token;
-      if (!token) throw new Error('Please sign in again.');
-      const response = await fetch('/api/whatsapp/templates?workspaceId=' + encodeURIComponent(workspace.id), { headers: { Authorization: 'Bearer ' + token } });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Meta templates could not be loaded.');
-      setMetaTemplates(Array.isArray(body.templates) ? body.templates : []);
-    } catch (error) { setSyncError(error.message || 'Meta templates could not be loaded.'); }
-    finally { setSyncing(false); }
-  }
-
-  useEffect(() => { syncMetaTemplates(); }, [workspace?.id]);
-  async function copy() {
-    try { await navigator.clipboard.writeText(current.body); notify('Template copied.'); }
-    catch { notify('Copy is unavailable in this browser.'); }
-  }
-  return <>
-    <PageHead eyebrow="MESSAGE LIBRARY" title="Templates" description="Sync approved WhatsApp templates from Meta and browse starter message examples."/>
-    <section className="panel" style={{marginBottom:18}}><div className="panel-head"><div><h2>Meta WhatsApp templates</h2><p>Live templates retrieved securely from the connected WhatsApp Business Account.</p></div><button className="button light" onClick={syncMetaTemplates} disabled={syncing}><RefreshCw size={14}/>{syncing?'Syncing…':'Sync from Meta'}</button></div>
-      {syncError&&<p style={{padding:'0 20px',fontSize:12,color:'#b45309'}}>{syncError}</p>}
-      <div className="table-scroll"><table><thead><tr><th>TEMPLATE NAME</th><th>CATEGORY</th><th>LANGUAGE</th><th>STATUS</th><th>QUALITY</th></tr></thead><tbody>
-        {metaTemplates.map(item=><tr key={item.name+'|'+item.language}><td><b>{item.name}</b></td><td>{item.category||'—'}</td><td>{item.language||'—'}</td><td><span className={'status '+(item.status==='APPROVED'?'active':'pending')}>{item.status||'Unknown'}</span></td><td>{item.quality||'—'}</td></tr>)}
-      </tbody></table>{metaTemplates.length===0&&!syncing&&<div className="empty"><MessageCircle size={25}/><b>No Meta templates loaded</b><span>Use Sync from Meta to retrieve templates for this WhatsApp Business Account.</span></div>}</div>
-      <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>{metaTemplates.length} templates · {metaTemplates.filter(item=>item.status==='APPROVED').length} approved · only approved Marketing and Utility templates can be sent from Campaigns.</div>
-    </section>
-    <section className="panel"><div className="panel-head"><div><h2>Starter templates</h2><p>Examples for drafting. These are not approved WhatsApp API templates.</p></div><span className="count">{starterTemplates.length} templates</span></div>
-      <div className="module-grid">{starterTemplates.map(item=><button key={item.name} className="stat template-card" onClick={()=>setSelected(item.name)} aria-pressed={selected===item.name}><div className="stat-label">{item.category}<MessageCircle size={16}/></div><strong>{item.name}</strong><small>{item.body}</small></button>)}</div>
-    </section>
-    <section className="panel" style={{marginTop:18,padding:20}}><div className="panel-head" style={{padding:'0 0 12px'}}><div><h2>{current.name} preview</h2><p>Use the copy button to adapt this text for your business.</p></div></div><div className="template-preview">{current.body}</div><button className="button primary" style={{marginTop:14}} onClick={copy}><Copy size={15}/> Copy template</button></section>
   </>;
 }
 
