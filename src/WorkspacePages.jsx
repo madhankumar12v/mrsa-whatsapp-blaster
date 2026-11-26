@@ -23,6 +23,11 @@ export function CampaignsPage({ contacts, notify, workspace }) {
   const [draftsLoading, setDraftsLoading] = useState(true);
   const [draftsSaving, setDraftsSaving] = useState(false);
   const [draftsError, setDraftsError] = useState('');
+  const [editingDraftId, setEditingDraftId] = useState(null);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [campaignRuns, setCampaignRuns] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   async function loadCampaignDrafts() {
     if (!workspace?.id) { setDrafts([]); setDraftsLoading(false); return; }
     setDraftsLoading(true); setDraftsError('');
@@ -34,7 +39,16 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     else setDrafts(Array.isArray(data) ? data : []);
     setDraftsLoading(false);
   }
-  useEffect(() => { loadCampaignDrafts(); }, [workspace?.id]);
+  useEffect(() => { loadCampaignDrafts(); loadCampaignHistory(); }, [workspace?.id]);
+
+  async function loadCampaignHistory() {
+    if (!workspace?.id) { setCampaignRuns([]); return; }
+    setHistoryLoading(true); setHistoryError('');
+    const { data, error } = await supabase.from('campaign_runs').select('id,campaign_name,template_name,category,audience_count,accepted_count,failed_count,status,scheduled_at,started_at,completed_at,created_at').eq('workspace_id', workspace.id).order('created_at', { ascending: false }).limit(100);
+    if (error) { setHistoryError(error.message || 'Campaign history could not be loaded.'); setCampaignRuns([]); }
+    else setCampaignRuns(Array.isArray(data) ? data : []);
+    setHistoryLoading(false);
+  }
 
   const eligibleContacts = contacts.filter(c => c.consent === 'Opted in' && c.consentAt && c.source && c.consentEvidence && ['marketing','utility','all'].includes(c.consentScope) && (c.consentScope === 'all' || c.consentScope === campaignCategory) && /^[0-9a-f-]{36}$/i.test(String(c.id)));
   const eligible = eligibleContacts.length;
@@ -224,20 +238,26 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     }
   }
 
-  async function saveDraft(event) {
-    event.preventDefault();
+  async function persistDraft(event, schedule = false) {
+    event?.preventDefault?.();
     if (!workspace?.id) { notify('Workspace is not ready. Please refresh and try again.'); return; }
+    if (!name.trim() || !message.trim()) { notify('Enter a campaign name and message before saving.'); return; }
+    if (schedule && (!templateName.trim() || !metaTemplates.some(item => item.name === templateName && item.language === templateLanguage && item.status === 'APPROVED'))) { notify('Choose a synced, approved Meta template before scheduling.'); return; }
+    if (schedule && (!eligibleContacts.length || eligibleContacts.length > 50)) { notify('Scheduling requires 1–50 contacts with complete matching opt-in evidence.'); return; }
+    if (schedule && (!scheduledAt || !Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())) { notify('Choose a future date and time for this campaign.'); return; }
     setDraftsSaving(true);
     const { data: authData } = await supabase.auth.getUser();
-    const { data, error } = await supabase.from('campaign_drafts').insert({
-      workspace_id: workspace.id, name: name.trim(), message: message.trim(),
-      category: campaignCategory, audience_count: eligible, created_by: authData?.user?.id || null
-    }).select('id,name,message,category,audience_count,status,created_at,updated_at').single();
+    const payload = { workspace_id: workspace.id, name: name.trim(), message: message.trim(), category: campaignCategory, audience_count: schedule ? eligibleContacts.length : eligible, template_name: schedule ? templateName.trim() : null, template_language: schedule ? templateLanguage.trim() : null, template_parameters: schedule && templateParameters.trim() ? templateParameters.split('|').map(value => value.trim()) : [], contact_ids: schedule ? eligibleContacts.map(contact => contact.id) : [], scheduled_at: schedule ? new Date(scheduledAt).toISOString() : null, status: schedule ? 'scheduled' : 'draft', created_by: authData?.user?.id || null };
+    const query = editingDraftId ? supabase.from('campaign_drafts').update(payload).eq('id', editingDraftId).eq('workspace_id', workspace.id) : supabase.from('campaign_drafts').insert(payload);
+    const { data, error } = await query.select('id,name,message,category,audience_count,status,created_at,updated_at,scheduled_at,template_name,template_language').single();
     setDraftsSaving(false);
-    if (error) { notify('Draft could not be saved: ' + error.message); return; }
-    setDrafts(items => [data, ...items]);
-    setName(''); setMessage(''); notify('Campaign draft saved securely to this workspace.');
+    if (error) { notify('Campaign could not be saved: ' + error.message); return; }
+    setDrafts(items => [data, ...items.filter(item => item.id !== data.id)]);
+    setEditingDraftId(null); setName(''); setMessage(''); setScheduledAt('');
+    notify(schedule ? 'Campaign scheduled in Supabase. Automatic delivery starts after the scheduler Worker is deployed and configured.' : 'Campaign draft saved securely to this workspace.');
   }
+  async function saveDraft(event) { return persistDraft(event, false); }
+  async function scheduleDraft(event) { return persistDraft(event, true); }
   async function removeDraft(id) {
     if (!window.confirm('Delete this campaign draft?')) return;
     const { error } = await supabase.from('campaign_drafts').delete().eq('id', id).eq('workspace_id', workspace.id);
@@ -322,20 +342,23 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>This panel combines the initial Meta API response with the latest webhook status, matched by the exact Meta message ID. Refresh status to load the newest delivery updates.</div>
     </section>}
     <section className="panel" style={{padding:20}}>
-      <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Create campaign draft</h2><p>Draft only. No WhatsApp messages will be sent from this page.</p></div></div>
+      <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>{editingDraftId ? 'Edit campaign' : 'Create campaign draft'}</h2><p>Drafts are saved in Supabase. Scheduling stores the approved template and eligible audience for the scheduler.</p></div></div>
       <form onSubmit={saveDraft} style={{display:'grid',gap:12,maxWidth:720}}>
         <label className="module-label">Campaign name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. November customer update"/></label>
         <label className="module-label">Message<textarea required rows="5" value={message} onChange={e=>setMessage(e.target.value)} placeholder="Write your WhatsApp message..."/></label>
         <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>Consent protection</b><span>Only {eligible} contacts with matching {campaignCategory} consent are eligible. Pending, opted-out and other-category contacts are excluded.</span></div></div>
-        <div><button className="button primary" type="submit" disabled={draftsSaving || !name.trim() || !message.trim()}><Plus size={15}/>{draftsSaving ? "Saving…" : "Save campaign draft"}</button></div>
+        <label className="module-label">Schedule date & time (local time)<input type="datetime-local" value={scheduledAt} min={new Date(Date.now()+60000).toISOString().slice(0,16)} onChange={e=>setScheduledAt(e.target.value)}/></label>
+        <small style={{color:'#718096'}}>Scheduling uses the currently selected approved Meta template and eligible audience (maximum 50). The selected time is stored in UTC.</small>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="button primary" type="submit" disabled={draftsSaving || !name.trim() || !message.trim()}><Plus size={15}/>{draftsSaving ? "Saving…" : editingDraftId ? "Update draft" : "Save campaign draft"}</button><button className="button light" type="button" onClick={scheduleDraft} disabled={draftsSaving || !scheduledAt || !name.trim() || !message.trim()}><Clock3 size={14}/>{draftsSaving ? 'Saving…' : 'Schedule campaign'}</button>{editingDraftId&&<button className="button light" type="button" onClick={()=>{setEditingDraftId(null);setName('');setMessage('');setScheduledAt('');}}>Cancel edit</button>}</div>
       </form>
     </section>
     <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2>Saved campaign drafts</h2><p>Drafts are stored in Supabase and available across signed-in devices in this workspace.</p></div><span className="count">{drafts.length} drafts</span></div>{draftsError && <div style={{padding:"0 20px 14px",fontSize:12,color:"#b45309"}}>Draft storage issue: {draftsError}. Apply the campaign drafts migration in Supabase.</div>}
       <div className="table-scroll"><table><thead><tr><th>CAMPAIGN</th><th>ELIGIBLE AUDIENCE</th><th>CREATED</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>
-        {drafts.map(item=><tr key={item.id}><td><b>{item.name}</b></td><td>{item.audience_count ?? 0} ({item.category || 'Unspecified'})</td><td>{new Date(item.created_at).toLocaleDateString('en-IN')}</td><td><span className="status pending">Draft</span></td><td><button className="more" onClick={()=>{setName(item.name);setMessage(item.message);setCampaignCategory(item.category || 'marketing');window.scrollTo({top:0,behavior:'smooth'});}}>Load into editor</button><button className="more" onClick={()=>removeDraft(item.id)}>Delete</button></td></tr>)}
+        {drafts.map(item=><tr key={item.id}><td><b>{item.name}</b><small style={{display:'block',marginTop:4,color:'#8794a5'}}>{item.template_name || 'Message draft'}</small></td><td>{item.audience_count ?? 0} ({item.category || 'Unspecified'})</td><td>{new Date(item.created_at).toLocaleDateString('en-IN')}</td><td><span className={'status '+(item.status==='scheduled'?'active':'pending')}>{item.status==='scheduled'?'Scheduled':item.status==='sent'?'Sent':item.status==='processing'?'Processing':item.status==='failed'?'Failed':'Draft'}{item.scheduled_at?' · '+new Date(item.scheduled_at).toLocaleString('en-IN'):''}</span></td><td><button className="more" onClick={()=>{setEditingDraftId(item.id);setName(item.name);setMessage(item.message);setCampaignCategory(item.category || 'marketing');setScheduledAt(item.scheduled_at ? new Date(item.scheduled_at).toISOString().slice(0,16) : '');if(item.template_name){setTemplateName(item.template_name);setTemplateLanguage(item.template_language || 'en_US');}window.scrollTo({top:0,behavior:'smooth'});}}>Edit / Load</button><button className="more" onClick={()=>removeDraft(item.id)}>Delete</button></td></tr>)}
       </tbody></table>{!draftsLoading && drafts.length===0&&<div className="empty"><Megaphone size={25}/><b>No campaign drafts</b><span>Create a draft above to get started.</span></div>}</div>
     </section>
-    <div className="compliance"><Activity size={17}/><div><b>WhatsApp sending status</b><span>Live API requests are enabled. This page shows the latest per-contact API result; use Meta delivery-status webhooks to confirm delivered, read or undelivered states. Continue messaging only contacts with valid consent.</span></div></div>
+    <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2>Campaign history</h2><p>Campaign-level summaries saved in Supabase for this workspace.</p></div><button className="button light" type="button" onClick={loadCampaignHistory} disabled={historyLoading}><RefreshCw size={14}/>{historyLoading?'Refreshing…':'Refresh history'}</button></div>{historyError&&<div style={{padding:'0 20px 14px',fontSize:12,color:'#b45309'}}>{historyError}</div>}<div className="table-scroll"><table><thead><tr><th>CAMPAIGN</th><th>TEMPLATE</th><th>AUDIENCE</th><th>ACCEPTED</th><th>FAILED</th><th>STATUS</th><th>DATE</th></tr></thead><tbody>{campaignRuns.map(run=><tr key={run.id}><td><b>{run.campaign_name}</b></td><td>{run.template_name}</td><td>{run.audience_count}</td><td>{run.accepted_count}</td><td>{run.failed_count}</td><td><span className={'status '+(run.status==='completed'?'active':run.status==='failed'?'pending':'')}>{run.status}</span></td><td>{new Date(run.completed_at || run.scheduled_at || run.created_at).toLocaleString('en-IN')}</td></tr>)}</tbody></table>{!historyLoading&&!historyError&&!campaignRuns.length&&<div className="empty"><Activity size={25}/><b>No campaign history yet</b><span>Campaign send summaries will appear here after a send or scheduled run.</span></div>}</div></section>
+    <div className="compliance"><Activity size={17}/><div><b>WhatsApp sending status</b><span>Live API requests are enabled. Delivery status is confirmed separately through Meta webhooks. Scheduled sends re-check current consent before each message.</span></div></div>
   </>;
 }
 
