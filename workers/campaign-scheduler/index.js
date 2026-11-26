@@ -51,7 +51,7 @@ async function processDraft(env,draft) {
           const components=parameters.length?[{type:"body",parameters:parameters.map(text=>({type:"text",text:String(text)}))}]:[];
           const sent=await graph(env,env.WHATSAPP_PHONE_NUMBER_ID+"/messages",{method:"POST",body:JSON.stringify({messaging_product:"whatsapp",recipient_type:"individual",to,type:"template",template:{name:draft.template_name,language:{code:draft.template_language||"en_US"},...(components.length?{components}:{})}})});
           messageId=sent?.messages?.[0]?.id||null; status="accepted"; accepted++;
-        } catch(e) { errorMessage=e.message; failed++; }
+        } catch(e) { errorMessage=e.message; }
       }
       if(status==="failed") failed++;
       await db(env,"whatsapp_message_logs",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:workspaceId,contact_id:c?.id||id,created_by:draft.created_by,recipient_phone:to||digits(c?.phone),template_name:draft.template_name,meta_message_id:messageId,status,status_updated_at:new Date().toISOString(),error_message:errorMessage})});
