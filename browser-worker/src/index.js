@@ -82,8 +82,8 @@ export class BrowserSession extends DurableObject {
     } catch {
       this.browser = null;
       this.page = null;
-      await this.ctx.storage.delete("sessionId");
-      await this.ctx.storage.delete("activeSince");
+      // Account for elapsed browser time even if Cloudflare closed the remote session.
+      await this.finishSession();
       return false;
     }
   }
