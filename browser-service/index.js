@@ -98,7 +98,9 @@ app.get("/api/browser/qr", authorized, async (_req, res) => {
     return res.status(409).json({ error: "Browser is not running. Start it first." });
   }
   try {
-    const image = await page.screenshot({ type: "png", fullPage: false });
+    const qrCanvas = await page.$("canvas");
+    if (!qrCanvas) return res.status(409).json({ error: "A QR code is not currently visible. WhatsApp Web may already be signed in or still loading." });
+    const image = await qrCanvas.screenshot({ type: "png" });
     res.set("Cache-Control", "no-store, private");
     res.type("png").send(image);
   } catch {
