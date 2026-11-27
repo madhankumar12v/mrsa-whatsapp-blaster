@@ -1,0 +1,15 @@
+name = "mrsa-whatsapp-browser"
+main = "src/index.js"
+compatibility_date = "2026-11-27"
+compatibility_flags = ["nodejs_compat"]
+
+[browser]
+binding = "BROWSER"
+
+[[durable_objects.bindings]]
+name = "BROWSER_SESSIONS"
+class_name = "BrowserSession"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BrowserSession"]
