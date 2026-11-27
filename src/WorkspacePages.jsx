@@ -338,13 +338,13 @@ export function CampaignsPage({ contacts, notify, workspace }) {
           <p style={{margin:'6px 0 0',fontSize:12,color:'#68778c',lineHeight:1.6}}>Your server blocks every outbound WhatsApp send before Meta is contacted. No messages are sent and no monthly message quota is reserved.</p>
         </div>
       </div>
-      <div className="stats" style={{padding:0,gridTemplateColumns:'repeat(4,minmax(0,1fr))'}}>
+      <div className="stats" style={{padding:0,gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))'}}>
         <Stat label="Total contacts" value={contacts.length} note="Saved in this workspace" icon={Users}/>
         <Stat label="Opted-in records" value={contacts.filter(c=>c.consent==='Opted in').length} note="Recorded consent status" icon={ShieldCheck}/>
         <Stat label="Unique eligible" value={eligible} note={campaignCategory+" consent with evidence"} icon={Check}/>
         <Stat label="Duplicate / invalid" value={duplicateEligibleCount} note="Excluded from eligible audience" icon={X}/>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)',gap:14,marginTop:18}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:14,marginTop:18}}>
         <div style={{border:'1px solid #e7edf3',borderRadius:10,padding:14}}>
           <b style={{fontSize:12,color:'#26384e'}}>Audience preview</b>
           <p style={{fontSize:11,color:'#7b899b',lineHeight:1.6,margin:'7px 0 12px'}}>Choose a consent category to preview which recorded opt-ins qualify. Pending, opted-out, incomplete-consent and duplicate/invalid contacts are excluded.</p>
