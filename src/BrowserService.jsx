@@ -57,7 +57,7 @@ export default function BrowserServicePage({ workspace }) {
         <button style={{ ...button, background: "#e2e8f0", color: "#0f172a" }} disabled={busy || !workspace?.id} onClick={refreshStatus}><RefreshCw size={16}/> Refresh status</button>
         <button style={{ ...button, background: "#fee2e2", color: "#991b1b" }} disabled={busy} onClick={stopBrowser}><Square size={16}/> Stop browser</button>
       </div>
-      {status && <p style={{ marginBottom: 0, fontSize: 14 }}>Browser: <strong>{status.running ? "Running" : "Stopped"}</strong> · Page: <strong>{status.pageOpen ? "Open" : "Closed"}</strong></p>}
+      {status && <p style={{ marginBottom: 0, fontSize: 14 }}>Browser: <strong>{status.running ? "Running" : "Stopped"}</strong> · Page: <strong>{status.pageOpen ? "Open" : "Closed"}</strong> · Daily usage: <strong>{status.dailyBrowserMinutesUsed ?? 0}/{status.dailyBrowserMinutesLimit ?? 8} min</strong></p>}
       {status?.lastError && <p style={{ color: "#b91c1c" }}>{status.lastError}</p>}
       {error && <p role="alert" style={{ color: "#b91c1c", marginBottom: 0 }}>{error}</p>}
     </section>
