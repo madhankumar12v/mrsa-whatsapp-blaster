@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabase.js';
+import ManualWhatsAppBlaster from './ManualWhatsAppBlaster.jsx';
 import { Activity, ArrowDownToLine, Check, Clock3, Download, Megaphone, MessageCircle, Plus, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
 
 function PageHead({ eyebrow, title, description, action }) {
@@ -326,6 +327,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <Stat label="Last run accepted" value={lastSend ? lastSend.sent : '—'} note={lastSend ? 'Accepted by Meta · not delivery-confirmed' : 'No send results yet'} icon={MessageCircle}/>
       <Stat label="This month sent attempts" value={usageLoading ? '…' : monthlyUsage.attempted} note={monthlyUsage.limit == null ? 'No monthly cap configured' : 'Of ' + monthlyUsage.limit + ' included messages'} icon={Activity}/>
     </section>
+    <ManualWhatsAppBlaster contacts={contacts} notify={notify}/>
     <section className="panel" style={{padding:20,marginBottom:18}}>
       <div className="panel-head" style={{padding:'0 0 12px'}}><div><h2>Monthly usage</h2><p>Usage is tracked against the UTC calendar month. Existing workspaces remain uncapped until a plan limit is configured.</p></div><button className="button light" type="button" onClick={loadMonthlyUsage} disabled={usageLoading}><RefreshCw size={14}/>{usageLoading?'Refreshing…':'Refresh usage'}</button></div>
       {usageError ? <div style={{fontSize:12,color:'#b45309'}}>{usageError}</div> : <><div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',fontSize:13}}><b>{usageLoading?'Loading…':monthlyUsage.attempted.toLocaleString('en-IN')+' messages attempted'}</b><span style={{color:'#68778c'}}>{monthlyUsage.limit == null ? 'Unlimited until a plan cap is configured' : (Math.max(0,monthlyUsage.limit-monthlyUsage.attempted)).toLocaleString('en-IN')+' remaining of '+monthlyUsage.limit}</span></div>{monthlyUsage.limit != null && <div style={{height:8,background:'#e8edf4',borderRadius:20,overflow:'hidden',marginTop:10}}><div style={{height:'100%',width:Math.min(100,monthlyUsage.limit?monthlyUsage.attempted/monthlyUsage.limit*100:100)+'%',background:monthlyUsage.attempted>=monthlyUsage.limit?'#d97706':'#2563eb'}}/></div>}<div style={{display:'flex',gap:22,flexWrap:'wrap',marginTop:12,fontSize:12,color:'#68778c'}}><span>Accepted by Meta: <b>{monthlyUsage.accepted}</b></span><span>Failed attempts: <b>{monthlyUsage.failed}</b></span></div></>}
