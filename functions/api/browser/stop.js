@@ -1,5 +1,5 @@
 import { authorizeBrowserAdmin, callBrowserService } from "../../_lib/browser.js";
-import { reply } from "../../_lib/whatsapp.js";
+import { reply, errorResponse } from "../../_lib/whatsapp.js";
 
 export async function onRequestPost({ request, env }) {
   try {
@@ -8,7 +8,8 @@ export async function onRequestPost({ request, env }) {
     const upstream = await callBrowserService(config, "/api/browser/stop", "POST");
     const body = await upstream.json().catch(() => ({}));
     return reply(body, upstream.status);
-  } catch {
+  } catch (error) {
+    if (["AUTH_REQUIRED", "INVALID_WORKSPACE", "ADMIN_REQUIRED", "DATABASE_ERROR"].includes(error?.message)) return errorResponse(error);
     return reply({ error: "Browser service could not be stopped. Please retry." }, 503);
   }
 }
