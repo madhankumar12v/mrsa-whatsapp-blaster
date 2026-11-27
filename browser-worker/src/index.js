@@ -77,8 +77,12 @@ export class BrowserSession extends DurableObject {
     try {
       this.browser = await puppeteer.connect(this.env.BROWSER, sessionId);
       const pages = await this.browser.pages();
-      this.page = pages.find(p => p.url().includes("web.whatsapp.com")) || pages[0] || null;
-      return Boolean(this.page);
+      this.page = pages.find(p => p.url().includes("web.whatsapp.com")) || null;
+      if (!this.page) {
+        this.page = await this.browser.newPage();
+        await this.page.goto("https://web.whatsapp.com", { waitUntil: "domcontentloaded", timeout: 45000 });
+      }
+      return true;
     } catch {
       this.browser = null;
       this.page = null;
@@ -116,20 +120,19 @@ export class BrowserSession extends DurableObject {
       if (await this.connectExisting()) return json({ ...(await this.state()), alreadyRunning: true });
 
       try {
+        // Start accounting before allocating a remote browser so failed launches are not free retries.
+        await this.ctx.storage.put("activeSince", Date.now());
+        await this.ctx.storage.put("startedAt", new Date().toISOString());
         this.browser = await puppeteer.launch(this.env.BROWSER);
         this.page = await this.browser.newPage();
         await this.page.setViewport({ width: 1280, height: 900 });
         await this.page.goto("https://web.whatsapp.com", { waitUntil: "domcontentloaded", timeout: 45000 });
         const sessionId = this.browser.sessionId();
         await this.ctx.storage.put("sessionId", sessionId);
-        await this.ctx.storage.put("activeSince", Date.now());
-        await this.ctx.storage.put("startedAt", new Date().toISOString());
         await this.ctx.storage.setAlarm(Date.now() + HEARTBEAT_MS);
         return json({ ...(await this.state()), note: "WhatsApp Web opened. Scan the private QR preview if requested. No messages are sent." });
       } catch (error) {
-        try { await this.browser?.close(); } catch {}
-        this.browser = null;
-        this.page = null;
+        await this.finishSession();
         return json({ error: "Cloudflare Browser Run could not start the WhatsApp Web session.", detail: String(error?.message || "").slice(0, 180) }, 503);
       }
     }
