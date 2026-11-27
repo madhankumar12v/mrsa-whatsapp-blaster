@@ -1,0 +1,24 @@
+import { authorizeBrowserAdmin, callBrowserService } from "../../_lib/browser.js";
+import { reply } from "../../_lib/whatsapp.js";
+
+export async function onRequestGet({ request, env }) {
+  try {
+    const config = await authorizeBrowserAdmin(request, env);
+    if (config.response) return config.response;
+    const upstream = await callBrowserService(config, "/api/browser/qr");
+    if (!upstream.ok) {
+      const body = await upstream.json().catch(() => ({}));
+      return reply(body, upstream.status);
+    }
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "no-store, private",
+        "x-content-type-options": "nosniff"
+      }
+    });
+  } catch {
+    return reply({ error: "QR preview is temporarily unavailable. Start the browser and retry." }, 503);
+  }
+}
