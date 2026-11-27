@@ -51,7 +51,7 @@ export default function BrowserServicePage({ workspace }) {
     <div><div style={{ color: "#64748b", fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>ONLINE BROWSER AUTOMATION</div><h1 style={{ margin: "6px 0" }}>Puppeteer Browser Service</h1><p style={{ color: "#64748b", margin: 0 }}>Manage a remote browser session from your MrSa website.</p></div>
     <section style={panel}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Monitor size={22}/><h2 style={{ fontSize: 18, margin: 0 }}>Connection</h2></div>
-      <p style={{ color: "#64748b", fontSize: 14 }}>The free cloud service may take about a minute to wake after inactivity. Retry status if its first request times out.</p>
+      <p style={{ color: "#64748b", fontSize: 14 }}>Cloudflare Browser Run provides a temporary remote browser. This prototype is limited to short manual sessions.</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
         <button style={{ ...button, background: "#2563eb", color: "white" }} disabled={busy || !workspace?.id} onClick={startBrowser}><Play size={16}/> Start browser</button>
         <button style={{ ...button, background: "#e2e8f0", color: "#0f172a" }} disabled={busy || !workspace?.id} onClick={refreshStatus}><RefreshCw size={16}/> Refresh status</button>
@@ -70,10 +70,10 @@ export default function BrowserServicePage({ workspace }) {
     <section style={{ ...panel, background: "#fffbeb", borderColor: "#fcd34d" }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}><AlertTriangle size={20} color="#92400e"/><strong style={{ color: "#92400e" }}>Free hosting limitations and account safety</strong></div>
       <ul style={{ color: "#78350f", fontSize: 14, paddingLeft: 20, lineHeight: 1.7 }}>
-        <li>The free service sleeps after 15 minutes without incoming traffic.</li>
-        <li>Its browser profile is temporary; restarts or sleep can require a new QR sign-in.</li>
-        <li>Cloud Chromium may exceed free memory limits and fail to start.</li>
-        <li>This module only starts, monitors and stops a browser. It does not send messages or automate bulk messaging.</li>
+        <li>Cloudflare Free includes 10 Browser Run minutes per day; MrSa applies an 8-minute daily safety cap.</li>
+        <li>The remote browser profile is not durable storage. A closed session may require scanning a new QR code.</li>
+        <li>Cloudflare may close sessions or reject new sessions when the free daily quota is exhausted.</li>
+        <li>This module only starts, monitors and stops a manual browser session. It never sends messages or runs bulk automation. It is not a 24/7 WhatsApp host.</li>
       </ul>
     </section>
   </div>;
