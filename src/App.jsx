@@ -5,6 +5,7 @@ import { CreditCard } from 'lucide-react';
 import Billing from './Billing.jsx';
 import { CampaignsPage, ReportsPage, SettingsPage } from './WorkspacePages.jsx';
 import WhatsAppPlatformPage from './WhatsAppPlatform.jsx';
+import BrowserServicePage from './BrowserService.jsx';
 import AdvancedAnalytics from './AdvancedAnalytics.jsx';
 import { SecurityPage, TeamPage } from './SecurityTeam.jsx';
 import { Activity, Clock3, ArrowDownToLine, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ContactRound, FileSpreadsheet, Filter, Grid2X2, LayoutDashboard, Megaphone, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Upload, Users, X, Zap, LogOut, Monitor } from 'lucide-react';
