@@ -26,5 +26,12 @@ jobs:
           node --check functions/api/whatsapp/send.js
           node --check functions/api/workspace/health.js
           node --check functions/api/whatsapp/webhook.js
+      - name: Validate Cloudflare Browser Run Worker
+        run: |
+          cd browser-worker
+          npm install
+          node --check src/index.js
+          npx wrangler deploy --dry-run
+
       - name: Build production bundle
         run: npm run build
