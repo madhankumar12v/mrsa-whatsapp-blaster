@@ -10,7 +10,6 @@ function phoneForWhatsApp(value) {
 }
 
 export default function ManualWhatsAppBlaster({contacts=[],notify=()=>{}}) {
-  const [category,setCategory]=useState('marketing');
   const [campaignName,setCampaignName]=useState('');
   const [message,setMessage]=useState('');
   const [index,setIndex]=useState(0);
@@ -19,13 +18,13 @@ export default function ManualWhatsAppBlaster({contacts=[],notify=()=>{}}) {
   const audience=useMemo(()=>{
     const seen=new Set();
     return contacts.filter(c=>{
-      if(c.consent!=='Opted in'||!c.consentAt||!c.source||!c.consentEvidence||!['marketing','utility','all'].includes(c.consentScope))return false;
-      if(c.consentScope!=='all'&&c.consentScope!==category)return false;
+      if(c.consent!=='Opted in'||!c.consentAt||!c.source||!c.consentEvidence||!['marketing','all'].includes(c.consentScope))return false;
+      if(c.consentScope!=='all'&&c.consentScope!=='marketing')return false;
       const phone=phoneForWhatsApp(c.phone);
       if(!phone||seen.has(phone))return false;
       seen.add(phone);return true;
     }).map(c=>({...c,waPhone:phoneForWhatsApp(c.phone)}));
-  },[contacts,category]);
+  },[contacts]);
   const pending=audience.filter(c=>!completed.includes(c.id));
   const current=pending[Math.min(index,Math.max(0,pending.length-1))]||null;
   const personalized=message.replaceAll('{{name}}',current?.name||'').replaceAll('{name}',current?.name||'');
@@ -45,15 +44,14 @@ export default function ManualWhatsAppBlaster({contacts=[],notify=()=>{}}) {
   const filtered=pending.filter(c=>(c.name+' '+c.phone).toLowerCase().includes(query.toLowerCase()));
   return <section className="panel" style={{padding:20,marginBottom:18,border:'1px solid #cfe7dc'}}>
     <div className="panel-head" style={{padding:'0 0 14px'}}><div><h2 style={{display:'flex',alignItems:'center',gap:8}}><MessageCircle size={18}/> Manual WhatsApp Bulk Blaster</h2><p>Prepare personalised chats for opted-in contacts. You review and press Send inside WhatsApp for every recipient.</p></div><span className="status active">₹0 API mode</span></div>
-    <div className="compliance" style={{margin:'0 0 16px'}}><ShieldCheck size={17}/><div><b>Consent-safe audience</b><span>Only contacts with recorded opt-in date, source, evidence and matching consent category are included. Opt-outs and duplicates are excluded.</span></div></div>
+    <div className="compliance" style={{margin:'0 0 16px'}}><ShieldCheck size={17}/><div><b>Consent-safe audience</b><span>Only contacts with recorded marketing opt-in date, source and evidence are included. Utility-only, pending, opted-out and duplicate contacts are excluded.</span></div></div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
       <label className="module-label">Campaign name<input value={campaignName} onChange={e=>setCampaignName(e.target.value)} placeholder="e.g. MrSa customer update"/></label>
-      <label className="module-label">Consent category<select value={category} onChange={e=>{setCategory(e.target.value);setIndex(0);setCompleted([]);}}><option value="marketing">Marketing / Promotional</option><option value="utility">Utility / Transactional</option></select></label>
     </div>
     <label className="module-label" style={{display:'block',marginTop:12}}>Message<textarea rows="4" value={message} onChange={e=>setMessage(e.target.value)} placeholder="Hi {{name}}, your message here…"/></label>
     <small style={{display:'block',color:'#718096',marginTop:5}}>Personalisation: use <b>{'{{name}}'}</b> or <b>{'{name}'}</b> to insert each contact's name.</small>
     <div className="stats" style={{padding:'16px 0',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))'}}>
-      <div className="stat"><div className="stat-label">Eligible contacts<Users size={16}/></div><strong>{audience.length.toLocaleString('en-IN')}</strong><small>Unique valid opt-ins</small></div>
+      <div className="stat"><div className="stat-label">Eligible contacts<Users size={16}/></div><strong>{audience.length.toLocaleString('en-IN')}</strong><small>Unique marketing opt-ins</small></div>
       <div className="stat"><div className="stat-label">Marked complete<CheckCircle2 size={16}/></div><strong>{completed.length.toLocaleString('en-IN')}</strong><small>Your manual confirmations</small></div>
       <div className="stat"><div className="stat-label">Remaining</div><strong>{pending.length.toLocaleString('en-IN')}</strong><small>Chats still in queue</small></div>
     </div>
