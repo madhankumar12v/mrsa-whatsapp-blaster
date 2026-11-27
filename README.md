@@ -58,6 +58,8 @@ GitHub Actions is configured to run `npm install` and `npm run build` for pull r
 - `WHATSAPP_BUSINESS_ACCOUNT_ID`
 - `WHATSAPP_VERIFY_TOKEN`
 - `META_APP_SECRET`
+- `BROWSER_SERVICE_URL` — HTTPS base URL of the separately deployed Puppeteer service.
+- `BROWSER_SERVICE_TOKEN` — secret bearer token shared only between Cloudflare Pages Functions and the Puppeteer service.
 - `WHATSAPP_API_VERSION` (optional; defaults to `v27.0`)
 
 Keep service-role keys, Meta access tokens, App Secrets and webhook verify tokens as encrypted server-side secrets. Never put them in frontend code, `VITE_` variables, Git commits, screenshots or chat messages.
