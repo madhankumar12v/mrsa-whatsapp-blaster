@@ -335,7 +335,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         <div style={{width:38,height:38,borderRadius:11,display:'grid',placeItems:'center',background:'#eaf8f1',color:'#16875e',flexShrink:0}}><ShieldCheck size={19}/></div>
         <div style={{minWidth:0}}>
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><h2 style={{margin:0,fontSize:15}}>Zero-Cost Mode is ON</h2><span className="status active">₹0 budget · sending blocked</span></div>
-          <p style={{margin:'6px 0 0',fontSize:12,color:'#68778c',lineHeight:1.6}}>Your server blocks every outbound WhatsApp send before Meta is contacted. No messages are sent and no monthly message quota is reserved.</p>
+          <p style={{margin:'6px 0 0',fontSize:12,color:'#68778c',lineHeight:1.6}}>Your server blocks every outbound WhatsApp message before it can be sent. No messages are sent and no monthly message quota is reserved.</p>
         </div>
       </div>
       <div className="stats" style={{padding:0,gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))'}}>
@@ -359,9 +359,9 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         </div>
         <div style={{border:'1px solid #e7edf3',borderRadius:10,padding:14}}>
           <b style={{fontSize:12,color:'#26384e'}}>Cost preview</b>
-          <div style={{display:'flex',alignItems:'baseline',gap:7,marginTop:12}}><strong style={{fontSize:28,color:'#16875e'}}>₹0</strong><span style={{fontSize:11,color:'#68778c'}}>current send spend</span></div>
-          <p style={{fontSize:11,color:'#7b899b',lineHeight:1.6,margin:'6px 0 0'}}>No message is sent while this lock is active. Potential future Meta charges are not estimated because no verified rate card is configured here. This lock covers this website only; other apps using the same Meta account may still incur charges.</p>
-          <div style={{marginTop:12,padding:'9px 10px',borderRadius:8,background:'#f3fbf6',fontSize:10,color:'#287b5c',lineHeight:1.5}}>No Meta send request · No quota reservation · No scheduler delivery</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:7,marginTop:12}}><strong style={{fontSize:28,color:'#16875e'}}>₹0</strong><span style={{fontSize:11,color:'#68778c'}}>new outbound spend while locked</span></div>
+          <p style={{fontSize:11,color:'#7b899b',lineHeight:1.6,margin:'6px 0 0'}}>No new message is sent while this lock is active. Historical sends may have incurred Meta charges. Potential future Meta charges are not estimated because no verified rate card is configured here. This lock covers this website only; other apps using the same Meta account may still incur charges.</p>
+          <div style={{marginTop:12,padding:'9px 10px',borderRadius:8,background:'#f3fbf6',fontSize:10,color:'#287b5c',lineHeight:1.5}}>No message send request · No quota reservation · No scheduler delivery</div>
         </div>
       </div>
     </section>
