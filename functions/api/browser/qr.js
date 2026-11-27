@@ -1,5 +1,5 @@
 import { authorizeBrowserAdmin, callBrowserService } from "../../_lib/browser.js";
-import { reply } from "../../_lib/whatsapp.js";
+import { reply, errorResponse } from "../../_lib/whatsapp.js";
 
 export async function onRequestGet({ request, env }) {
   try {
@@ -18,7 +18,8 @@ export async function onRequestGet({ request, env }) {
         "x-content-type-options": "nosniff"
       }
     });
-  } catch {
+  } catch (error) {
+    if (["AUTH_REQUIRED", "INVALID_WORKSPACE", "ADMIN_REQUIRED", "DATABASE_ERROR"].includes(error?.message)) return errorResponse(error);
     return reply({ error: "QR preview is temporarily unavailable. Start the browser and retry." }, 503);
   }
 }
