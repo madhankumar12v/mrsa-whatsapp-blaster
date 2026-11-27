@@ -196,7 +196,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     } finally { setTemplatesLoading(false); }
   }
 
-  useEffect(() => { syncMetaTemplates(); }, [workspace?.id]);
+  // Meta template sync is intentionally not run in Zero-Cost Mode; preview uses saved consent data only.
   async function sendApprovedTemplate() {
     if (!workspace?.id || !templateName.trim()) { notify('Enter your exact approved Meta template name.'); return; }
     if (!eligibleContacts.length) { notify('No contacts have complete, recorded opt-in evidence in Supabase.'); return; }
@@ -305,7 +305,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     if (error) { notify('Campaign could not be saved: ' + error.message); return; }
     setDrafts(items => [data, ...items.filter(item => item.id !== data.id)]);
     setEditingDraftId(null); setName(''); setMessage(''); setScheduledAt('');
-    notify(schedule ? 'Campaign scheduled in Supabase. Automatic delivery starts after the scheduler Worker is deployed and configured.' : 'Campaign draft saved securely to this workspace.');
+    notify(schedule ? 'Scheduled draft saved. Zero-Cost Mode blocks delivery; no WhatsApp messages will be sent.' : 'Campaign draft saved securely to this workspace.');
   }
   async function saveDraft(event) { return persistDraft(event, false); }
   async function scheduleDraft(event) { return persistDraft(event, true); }
@@ -329,28 +329,39 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <div className="panel-head" style={{padding:'0 0 12px'}}><div><h2>Monthly usage</h2><p>Usage is tracked against the UTC calendar month. Existing workspaces remain uncapped until a plan limit is configured.</p></div><button className="button light" type="button" onClick={loadMonthlyUsage} disabled={usageLoading}><RefreshCw size={14}/>{usageLoading?'Refreshing…':'Refresh usage'}</button></div>
       {usageError ? <div style={{fontSize:12,color:'#b45309'}}>{usageError}</div> : <><div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',fontSize:13}}><b>{usageLoading?'Loading…':monthlyUsage.attempted.toLocaleString('en-IN')+' messages attempted'}</b><span style={{color:'#68778c'}}>{monthlyUsage.limit == null ? 'Unlimited until a plan cap is configured' : (Math.max(0,monthlyUsage.limit-monthlyUsage.attempted)).toLocaleString('en-IN')+' remaining of '+monthlyUsage.limit}</span></div>{monthlyUsage.limit != null && <div style={{height:8,background:'#e8edf4',borderRadius:20,overflow:'hidden',marginTop:10}}><div style={{height:'100%',width:Math.min(100,monthlyUsage.limit?monthlyUsage.attempted/monthlyUsage.limit*100:100)+'%',background:monthlyUsage.attempted>=monthlyUsage.limit?'#d97706':'#2563eb'}}/></div>}<div style={{display:'flex',gap:22,flexWrap:'wrap',marginTop:12,fontSize:12,color:'#68778c'}}><span>Accepted by Meta: <b>{monthlyUsage.accepted}</b></span><span>Failed attempts: <b>{monthlyUsage.failed}</b></span></div></>}
     </section>
-    <section className="panel" style={{padding:20,marginBottom:18}}>
-      <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>Send an approved WhatsApp template</h2><p>Live sending uses Meta Cloud API. Only recorded opted-in Supabase contacts are eligible.</p></div></div>
-      <div style={{display:'grid',gap:12,maxWidth:720}}>
-        <label className="module-label">Campaign category<select value={campaignCategory} onChange={e=>setCampaignCategory(e.target.value)}><option value="marketing">Marketing / Promotional</option><option value="utility">Utility / Transactional</option></select></label>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
-          <label className="module-label" style={{flex:1,minWidth:260}}>Meta-approved template
-            <select value={templateName ? templateName + '|' + templateLanguage : '|'} onChange={e=>{
-              const chosen=metaTemplates.find(item=>item.name+'|'+item.language===e.target.value);
-              if(chosen){setTemplateName(chosen.name);setTemplateLanguage(chosen.language || 'en_US');setCampaignCategory(chosen.category);}
-            }}>
-              <option value="|">Choose a synced approved template</option>
-              {metaTemplates.filter(item=>item.status==='APPROVED' && ['marketing','utility'].includes(item.category)).map(item=><option key={item.name+'|'+item.language} value={item.name+'|'+item.language}>{item.name} · {item.category} · {item.language}</option>)}
+    <section className="panel zero-cost-panel" style={{padding:20,marginBottom:18}}>
+      <div style={{display:'flex',alignItems:'flex-start',gap:12,marginBottom:16}}>
+        <div style={{width:38,height:38,borderRadius:11,display:'grid',placeItems:'center',background:'#eaf8f1',color:'#16875e',flexShrink:0}}><ShieldCheck size={19}/></div>
+        <div style={{minWidth:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><h2 style={{margin:0,fontSize:15}}>Zero-Cost Mode is ON</h2><span className="status active">₹0 budget · sending blocked</span></div>
+          <p style={{margin:'6px 0 0',fontSize:12,color:'#68778c',lineHeight:1.6}}>Your server blocks every outbound WhatsApp send before Meta is contacted. No messages are sent and no monthly message quota is reserved.</p>
+        </div>
+      </div>
+      <div className="stats" style={{padding:0,gridTemplateColumns:'repeat(4,minmax(0,1fr))'}}>
+        <Stat label="Total contacts" value={contacts.length} note="Saved in this workspace" icon={Users}/>
+        <Stat label="Opted-in records" value={contacts.filter(c=>c.consent==='Opted in').length} note="Recorded consent status" icon={ShieldCheck}/>
+        <Stat label="Unique eligible" value={eligible} note={campaignCategory+" consent with evidence"} icon={Check}/>
+        <Stat label="Duplicate / invalid" value={duplicateEligibleCount} note="Excluded from eligible audience" icon={X}/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(0,1fr)',gap:14,marginTop:18}}>
+        <div style={{border:'1px solid #e7edf3',borderRadius:10,padding:14}}>
+          <b style={{fontSize:12,color:'#26384e'}}>Audience preview</b>
+          <p style={{fontSize:11,color:'#7b899b',lineHeight:1.6,margin:'7px 0 12px'}}>Choose a consent category to preview which recorded opt-ins qualify. Pending, opted-out, incomplete-consent and duplicate/invalid contacts are excluded.</p>
+          <label className="module-label">Consent category
+            <select value={campaignCategory} onChange={e=>setCampaignCategory(e.target.value)}>
+              <option value="marketing">Marketing / Promotional</option>
+              <option value="utility">Utility / Transactional</option>
             </select>
           </label>
-          <button className="button light" type="button" onClick={syncMetaTemplates} disabled={templatesLoading}><RefreshCw size={14}/>{templatesLoading?'Syncing…':'Sync from Meta'}</button>
+          <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:12,fontSize:11,color:'#68778c'}}><span>Eligible unique contacts</span><b style={{color:'#16875e'}}>{eligible.toLocaleString('en-IN')}</b></div>
+          <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:7,fontSize:11,color:'#68778c'}}><span>Excluded from this preview</span><b>{Math.max(0,contacts.length-eligible).toLocaleString('en-IN')}</b></div>
         </div>
-        {templatesError&&<p style={{fontSize:12,color:'#b45309',margin:0}}>{templatesError}</p>}
-        <small style={{color:'#68778c'}}>{metaTemplates.length} templates found · {metaTemplates.filter(item=>item.status==='APPROVED').length} approved and sendable. Active/quality-pending in WhatsApp Manager should appear as APPROVED in the API when eligible.</small>
-        <label className="module-label">Template language code<input value={templateLanguage} readOnly/></label>
-        <label className="module-label">Template body parameters (optional, in order)<input value={templateParameters} onChange={e=>setTemplateParameters(e.target.value)} placeholder="Example: Arun Kumar|Order 123"/></label><small style={{color:"#68778c"}}>Leave blank for templates without variables. Separate body values with a vertical bar (|).</small>
-        <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>{eligible} unique recipients ready · {duplicateEligibleCount} duplicate/invalid numbers excluded</b><span>Only contacts with complete opt-in evidence and {campaignCategory} consent (or All scope). Duplicate normalized phone numbers are excluded. Maximum 50 unique recipients per send.</span></div></div>
-        <div><button className="button primary" type="button" disabled={sending || !eligible || !templateName || !metaTemplates.some(item=>item.name===templateName&&item.language===templateLanguage&&item.status==='APPROVED')} onClick={sendApprovedTemplate}><MessageCircle size={15}/>{sending?'Sending…':'Send live WhatsApp campaign'}</button></div>
+        <div style={{border:'1px solid #e7edf3',borderRadius:10,padding:14}}>
+          <b style={{fontSize:12,color:'#26384e'}}>Cost preview</b>
+          <div style={{display:'flex',alignItems:'baseline',gap:7,marginTop:12}}><strong style={{fontSize:28,color:'#16875e'}}>₹0</strong><span style={{fontSize:11,color:'#68778c'}}>current website spend</span></div>
+          <p style={{fontSize:11,color:'#7b899b',lineHeight:1.6,margin:'6px 0 0'}}>No message is sent while this lock is active. Potential future Meta charges are not estimated because no verified rate card is configured here.</p>
+          <div style={{marginTop:12,padding:'9px 10px',borderRadius:8,background:'#f3fbf6',fontSize:10,color:'#287b5c',lineHeight:1.5}}>No Meta send request · No quota reservation · No scheduler delivery</div>
+        </div>
       </div>
     </section>
     <section className="panel" style={{marginBottom:18}}>
@@ -384,7 +395,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       </tbody></table>{!deliveryLoading&&!deliveryError&&deliveryLogs.length===0&&<div className="empty"><MessageCircle size={25}/><b>No WhatsApp delivery records yet</b><span>After a campaign attempt, each saved result will appear here.</span></div>}{!deliveryLoading&&!deliveryError&&deliveryLogs.length>0&&filteredDeliveryLogs.length===0&&<div className="empty"><Search size={25}/><b>No matching message attempts</b><span>Try another search term or status filter.</span></div>}</div>
       <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>“Accepted” is not a delivery confirmation. “Delivered” and “Read” are confirmed by status webhooks. Failed attempts show the Meta error where available.</div>
     </section>
-    {liveLastSend && <section className="panel" style={{marginBottom:18}}>
+    {false && liveLastSend && <section className="panel" style={{marginBottom:18}}>
       <div className="panel-head"><div><h2>Last WhatsApp send results</h2><p>{liveLastSend.templateName} · {liveLastSend.language} · {new Date(liveLastSend.createdAt).toLocaleString('en-IN')} · {liveLastSend.requested} requested</p></div><div className="head-actions"><button className="button light" type="button" onClick={retryFailedRecipients} disabled={sending || !liveLastSend.results.some(item=>item.liveStatus==='failed' && item.contactId)}><RefreshCw size={14}/>{sending?'Working…':'Retry failed only'}</button><span className="count">{liveLastSend.results.filter(item=>item.liveStatus==='accepted').length} awaiting status · {liveLastSend.results.filter(item=>['delivered','read'].includes(item.liveStatus)).length} delivered · {liveLastSend.results.filter(item=>item.liveStatus==='failed').length} failed</span></div></div>
       <div className="stats" style={{padding:'0 20px 18px'}}>
         <Stat label="Accepted" value={liveLastSend.results.filter(item=>item.liveStatus==='accepted').length} note="Waiting for webhook" icon={MessageCircle}/>
@@ -398,14 +409,14 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       <div style={{padding:'0 20px 16px',fontSize:12,color:'#68778c'}}>This panel combines the initial Meta API response with the latest webhook status, matched by the exact Meta message ID. Refresh status to load the newest delivery updates.</div>
     </section>}
     <section className="panel" style={{padding:20}}>
-      <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>{editingDraftId ? 'Edit campaign' : 'Create campaign draft'}</h2><p>Drafts are saved in Supabase. Scheduling stores the approved template and eligible audience for the scheduler.</p></div></div>
+      <div className="panel-head" style={{padding:'0 0 16px'}}><div><h2>{editingDraftId ? 'Edit campaign' : 'Create campaign draft'}</h2><p>Drafts are saved in Supabase. Scheduling stores a draft only. Zero-Cost Mode blocks delivery.</p></div></div>
       <form onSubmit={saveDraft} style={{display:'grid',gap:12,maxWidth:720}}>
         <label className="module-label">Campaign name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. November customer update"/></label>
         <label className="module-label">Message<textarea required rows="5" value={message} onChange={e=>setMessage(e.target.value)} placeholder="Write your WhatsApp message..."/></label>
         <div className="compliance" style={{margin:0}}><ShieldCheck size={17}/><div><b>Consent protection</b><span>Only {eligible} contacts with matching {campaignCategory} consent are eligible. Pending, opted-out and other-category contacts are excluded.</span></div></div>
         <label className="module-label">Schedule date & time (local time)<input type="datetime-local" value={scheduledAt} min={new Date(Date.now()+60000).toISOString().slice(0,16)} onChange={e=>setScheduledAt(e.target.value)}/></label>
-        <small style={{color:'#718096'}}>Scheduling uses the currently selected approved Meta template and eligible audience (maximum 50). The selected time is stored in UTC.</small>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="button primary" type="submit" disabled={draftsSaving || !name.trim() || !message.trim()}><Plus size={15}/>{draftsSaving ? "Saving…" : editingDraftId ? "Update draft" : "Save campaign draft"}</button><button className="button light" type="button" onClick={scheduleDraft} disabled={draftsSaving || !scheduledAt || !name.trim() || !message.trim()}><Clock3 size={14}/>{draftsSaving ? 'Saving…' : 'Schedule campaign'}</button>{editingDraftId&&<button className="button light" type="button" onClick={()=>{setEditingDraftId(null);setName('');setMessage('');setScheduledAt('');}}>Cancel edit</button>}</div>
+        <small style={{color:'#718096'}}>A scheduled draft stores the selected time in UTC. Zero-Cost Mode prevents all outbound delivery, including scheduled sends.</small>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="button primary" type="submit" disabled={draftsSaving || !name.trim() || !message.trim()}><Plus size={15}/>{draftsSaving ? "Saving…" : editingDraftId ? "Update draft" : "Save campaign draft"}</button><button className="button light" type="button" onClick={scheduleDraft} disabled={draftsSaving || !scheduledAt || !name.trim() || !message.trim()}><Clock3 size={14}/>{draftsSaving ? 'Saving…' : 'Save scheduled draft (no delivery)'}</button>{editingDraftId&&<button className="button light" type="button" onClick={()=>{setEditingDraftId(null);setName('');setMessage('');setScheduledAt('');}}>Cancel edit</button>}</div>
       </form>
     </section>
     <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2>Saved campaign drafts</h2><p>Drafts are stored in Supabase and available across signed-in devices in this workspace.</p></div><span className="count">{drafts.length} drafts</span></div>{draftsError && <div style={{padding:"0 20px 14px",fontSize:12,color:"#b45309"}}>Draft storage issue: {draftsError}. Apply the campaign drafts migration in Supabase.</div>}
@@ -414,7 +425,7 @@ export function CampaignsPage({ contacts, notify, workspace }) {
       </tbody></table>{!draftsLoading && drafts.length===0&&<div className="empty"><Megaphone size={25}/><b>No campaign drafts</b><span>Create a draft above to get started.</span></div>}</div>
     </section>
     <section className="panel" style={{marginTop:18}}><div className="panel-head"><div><h2>Campaign history</h2><p>Campaign-level summaries saved in Supabase for this workspace.</p></div><button className="button light" type="button" onClick={loadCampaignHistory} disabled={historyLoading}><RefreshCw size={14}/>{historyLoading?'Refreshing…':'Refresh history'}</button></div>{historyError&&<div style={{padding:'0 20px 14px',fontSize:12,color:'#b45309'}}>{historyError}</div>}<div className="table-scroll"><table><thead><tr><th>CAMPAIGN</th><th>TEMPLATE</th><th>AUDIENCE</th><th>ACCEPTED</th><th>FAILED</th><th>STATUS</th><th>DATE</th></tr></thead><tbody>{campaignRuns.map(run=><tr key={run.id}><td><b>{run.campaign_name}</b></td><td>{run.template_name}</td><td>{run.audience_count}</td><td>{run.accepted_count}</td><td>{run.failed_count}</td><td><span className={'status '+(run.status==='completed'?'active':run.status==='failed'?'pending':'')}>{run.status}</span></td><td>{new Date(run.completed_at || run.scheduled_at || run.created_at).toLocaleString('en-IN')}</td></tr>)}</tbody></table>{!historyLoading&&!historyError&&!campaignRuns.length&&<div className="empty"><Activity size={25}/><b>No campaign history yet</b><span>Campaign send summaries will appear here after a send or scheduled run.</span></div>}</div></section>
-    <div className="compliance"><Activity size={17}/><div><b>WhatsApp sending status</b><span>Live API requests are enabled. Delivery status is confirmed separately through Meta webhooks. Scheduled sends re-check current consent before each message.</span></div></div>
+    <div className="compliance"><ShieldCheck size={17}/><div><b>Zero-Cost Mode protection</b><span>All outbound WhatsApp requests are blocked server-side with ZERO_COST_BUDGET_BLOCKED. Campaign drafts and previews are safe to create; scheduled drafts will not be delivered while the ₹0 lock remains active.</span></div></div>
   </>;
 }
 
