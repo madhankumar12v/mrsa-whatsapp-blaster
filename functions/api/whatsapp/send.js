@@ -17,6 +17,18 @@ export async function onRequestPost({ request, env }) {
     if (!contactIds.length || contactIds.length > 50 || contactIds.some(id => !/^[0-9a-f-]{36}$/i.test(id))) return reply({ error: "Select between 1 and 50 valid saved contacts." }, 400);
     await requireWorkspaceAdmin(env, user.id, workspaceId);
 
+    // Fail closed: a ₹0 budget must never trigger a potentially billable Meta message.
+    // Keep this lock server-side and before template lookups, quota reservations, or sends.
+    const ZERO_COST_MODE = true;
+    if (ZERO_COST_MODE) {
+      return reply({
+        error: "WhatsApp sending is disabled because the daily spending budget is ₹0. No messages were sent and no message quota was reserved.",
+        code: "ZERO_COST_BUDGET_BLOCKED",
+        sent: 0,
+        dailyBudgetInr: 0
+      }, 423);
+    }
+
     let templateInfo;
     try {
       const templateList = await graphRequest(env, env.WHATSAPP_BUSINESS_ACCOUNT_ID + "/message_templates?name=" + encodeURIComponent(templateName));
