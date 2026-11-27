@@ -104,6 +104,12 @@ npm run build
 
 Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local` for local frontend development. Configure server-side bindings separately when testing Pages Functions with the appropriate Cloudflare development workflow.
 
+## Zero-cost sending lock
+
+Outbound WhatsApp sending is currently **hard-disabled** in `functions/api/whatsapp/send.js` with a server-side ₹0 budget lock. The endpoint returns `ZERO_COST_BUDGET_BLOCKED` before Meta template lookup, monthly quota reservation, or any outbound message request. This is deliberately fail-closed: Meta conversation/template pricing and recipient-country/category rules can change, so the application does not claim that any outbound send is guaranteed free.
+
+The current production architecture documents one outbound send route (`POST /api/whatsapp/send`). Campaign drafts are browser-local and there is no scheduled campaign worker documented in this repository. If a scheduled sender is added later, it must use the same server-side zero-cost guard before it can dispatch messages. This lock does not change Meta billing settings or prevent charges from other applications using the same Meta business account.
+
 ## Important limitations
 
 - Campaign drafts are browser-local; they are not shared across devices or team members.
