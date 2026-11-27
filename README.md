@@ -9,7 +9,8 @@ A consent-first WhatsApp Business campaign workspace by **MrSa Solutions**.
 | GitHub | Source control and deployment source |
 | Cloudflare Pages | React/Vite frontend and Pages Functions API |
 | Supabase | Authentication, PostgreSQL workspace data, contacts, consent and message logs |
-| Meta WhatsApp Cloud API | Approved-template messaging and delivery-status webhooks |
+| Meta WhatsApp Cloud API | Approved-template messaging and delivery-status webhooks (currently blocked by the ₹0 sending lock) |
+| Render (free web service) | Separate Puppeteer browser-session prototype for manual browser monitoring |
 | UPI | Manual ₹299 subscription payment; access is extended only after bank-credit verification |
 
 Production deployment target: **Cloudflare Pages**, with the GitHub `main` branch, build command `npm run build`, and output directory `dist`. The legacy Express files/scripts remain in the repository for local compatibility; they are not the production Pages Functions API.
@@ -78,6 +79,21 @@ https://<your-cloudflare-pages-domain>/api/whatsapp/webhook
 ```
 
 Use the same value for the Meta verify token and `WHATSAPP_VERIFY_TOKEN`. Subscribe the Meta app to the WhatsApp `messages` webhook field. Production webhook events require the Meta app to be published and correctly subscribed. A browser-side send result alone cannot provide Delivered or Read confirmation.
+
+## Online Puppeteer browser service (development branch)
+
+The separate `browser-service/` Node.js service can be deployed as a Render free web service using the root `render.yaml` Blueprint. The existing website exposes a **Browser Service** workspace page and same-origin authenticated proxy routes:
+
+- `GET /api/browser/status?workspaceId=...`
+- `POST /api/browser/start?workspaceId=...`
+- `GET /api/browser/qr?workspaceId=...`
+- `POST /api/browser/stop?workspaceId=...`
+
+Only workspace admins can access these routes. The Cloudflare Functions keep `BROWSER_SERVICE_TOKEN` server-side and proxy to the HTTPS Render service. The QR endpoint returns only the QR canvas image, not a screenshot of the user's chats.
+
+**Free-tier warning:** Render free web services spin down after 15 minutes without inbound traffic, take about a minute to wake, and have ephemeral filesystems. A sleep/restart/redeploy can erase the browser profile and require QR sign-in again. Cloud Chromium may also exceed free memory limits. This is a best-effort test setup, not 24/7 hosting.
+
+This service is limited to starting, monitoring and stopping a browser session for manual use. It does not send messages, scrape contacts, or automate bulk messaging. The existing server-side ₹0 outbound-message lock remains unchanged. See [browser-service/README.md](browser-service/README.md) for deployment steps.
 
 ## Supabase migrations
 
