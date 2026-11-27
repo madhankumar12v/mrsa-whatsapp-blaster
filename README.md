@@ -10,7 +10,7 @@ A consent-first WhatsApp Business campaign workspace by **MrSa Solutions**.
 | Cloudflare Pages | React/Vite frontend and Pages Functions API |
 | Supabase | Authentication, PostgreSQL workspace data, contacts, consent and message logs |
 | Meta WhatsApp Cloud API | Approved-template messaging and delivery-status webhooks (currently blocked by the ₹0 sending lock) |
-| Render (free web service) | Separate Puppeteer browser-session prototype for manual browser monitoring |
+| Cloudflare Workers + Browser Run | Remote Puppeteer browser prototype, with Durable Object session coordination |
 | UPI | Manual ₹299 subscription payment; access is extended only after bank-credit verification |
 
 Production deployment target: **Cloudflare Pages**, with the GitHub `main` branch, build command `npm run build`, and output directory `dist`. The legacy Express files/scripts remain in the repository for local compatibility; they are not the production Pages Functions API.
@@ -58,8 +58,8 @@ GitHub Actions is configured to run `npm install` and `npm run build` for pull r
 - `WHATSAPP_BUSINESS_ACCOUNT_ID`
 - `WHATSAPP_VERIFY_TOKEN`
 - `META_APP_SECRET`
-- `BROWSER_SERVICE_URL` — HTTPS base URL of the separately deployed Puppeteer service.
-- `BROWSER_SERVICE_TOKEN` — secret bearer token shared only between Cloudflare Pages Functions and the Puppeteer service.
+- `BROWSER_SERVICE_URL` — HTTPS URL of the separate Cloudflare Worker running Browser Run.
+- `BROWSER_SERVICE_TOKEN` — long random bearer token shared only between Cloudflare Pages Functions and the browser Worker.
 - `WHATSAPP_API_VERSION` (optional; defaults to `v27.0`)
 
 Keep service-role keys, Meta access tokens, App Secrets and webhook verify tokens as encrypted server-side secrets. Never put them in frontend code, `VITE_` variables, Git commits, screenshots or chat messages.
@@ -82,20 +82,20 @@ https://<your-cloudflare-pages-domain>/api/whatsapp/webhook
 
 Use the same value for the Meta verify token and `WHATSAPP_VERIFY_TOKEN`. Subscribe the Meta app to the WhatsApp `messages` webhook field. Production webhook events require the Meta app to be published and correctly subscribed. A browser-side send result alone cannot provide Delivered or Read confirmation.
 
-## Online Puppeteer browser service (development branch)
+## Cloudflare-only Puppeteer browser service (development branch)
 
-The separate `browser-service/` Node.js service can be deployed as a Render free web service using the root `render.yaml` Blueprint. The existing website exposes a **Browser Service** workspace page and same-origin authenticated proxy routes:
+The `browser-worker/` directory contains a separate Cloudflare Worker using Cloudflare Browser Run and `@cloudflare/puppeteer`. A Durable Object coordinates one manual WhatsApp Web browser session. The existing website exposes a **Browser Service** workspace page and same-origin authenticated proxy routes:
 
 - `GET /api/browser/status?workspaceId=...`
 - `POST /api/browser/start?workspaceId=...`
 - `GET /api/browser/qr?workspaceId=...`
 - `POST /api/browser/stop?workspaceId=...`
 
-Only workspace admins can access these routes. The Cloudflare Functions keep `BROWSER_SERVICE_TOKEN` server-side and proxy to the HTTPS Render service. The QR endpoint returns only the QR canvas image, not a screenshot of the user's chats.
+Only workspace Admins can access these routes. Cloudflare Pages Functions authenticate the Supabase user, check the workspace Admin membership, and keep the shared browser token server-side. The QR endpoint returns only the QR canvas image and disables caching.
 
-**Free-tier warning:** Render free web services spin down after 15 minutes without inbound traffic, take about a minute to wake, and have ephemeral filesystems. A sleep/restart/redeploy can erase the browser profile and require QR sign-in again. Cloud Chromium may also exceed free memory limits. This is a best-effort test setup, not 24/7 hosting.
+**Free-tier limitation:** Cloudflare Workers Free currently includes 10 Browser Run minutes per day. The Worker applies an 8-minute daily safety cap and blocks further browser starts until the UTC daily reset. Sessions are temporary and may close after inactivity or Cloudflare releases. The remote browser profile is not durable disk storage; WhatsApp may require a fresh QR scan after a session ends. This is a short-session prototype, not a persistent 24/7 WhatsApp Web host. See [browser-worker/README.md](browser-worker/README.md) for deployment instructions.
 
-This service is limited to starting, monitoring and stopping a browser session for manual use. It does not send messages, scrape contacts, or automate bulk messaging. The existing server-side ₹0 outbound-message lock remains unchanged. See [browser-service/README.md](browser-service/README.md) for deployment steps.
+This service only starts, monitors and stops a browser session for manual use. It does not send messages, scrape contacts, or automate bulk messaging. The existing server-side ₹0 outbound-message lock remains unchanged.
 
 ## Supabase migrations
 
