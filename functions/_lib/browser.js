@@ -34,6 +34,6 @@ export async function callBrowserService(config, path, method = "GET") {
       Authorization: "Bearer " + config.token,
       Accept: path.endsWith("/qr") ? "image/png" : "application/json"
     },
-    signal: AbortSignal.timeout(path.endsWith("/qr") ? 60000 : 30000)
+    signal: AbortSignal.timeout(path.endsWith("/qr") ? 60000 : path.endsWith("/start") ? 90000 : 30000)
   });
 }
