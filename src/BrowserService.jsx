@@ -43,6 +43,7 @@ export default function BrowserServicePage({ workspace }) {
     finally { setBusy(false); }
   }
   useEffect(() => { setStatus(null); setQrUrl(""); setError(""); if (workspace?.id) refreshStatus(); }, [workspace?.id]);
+  useEffect(() => () => { if (qrUrl) URL.revokeObjectURL(qrUrl); }, [qrUrl]);
 
   const panel = { background: "var(--panel, #fff)", border: "1px solid var(--border, #e5e7eb)", borderRadius: 14, padding: 20 };
   const button = { border: 0, borderRadius: 9, padding: "10px 14px", display: "inline-flex", alignItems: "center", gap: 8, cursor: busy ? "wait" : "pointer", fontWeight: 600, opacity: busy ? .6 : 1 };
