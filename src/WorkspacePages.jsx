@@ -196,7 +196,8 @@ export function CampaignsPage({ contacts, notify, workspace }) {
     } finally { setTemplatesLoading(false); }
   }
 
-  // Meta template sync is intentionally not run in Zero-Cost Mode; preview uses saved consent data only.
+  // Read-only template sync may populate scheduled-draft metadata; it never sends WhatsApp messages.
+  useEffect(() => { syncMetaTemplates(); }, [workspace?.id]);
   async function sendApprovedTemplate() {
     if (!workspace?.id || !templateName.trim()) { notify('Enter your exact approved Meta template name.'); return; }
     if (!eligibleContacts.length) { notify('No contacts have complete, recorded opt-in evidence in Supabase.'); return; }
@@ -358,8 +359,8 @@ export function CampaignsPage({ contacts, notify, workspace }) {
         </div>
         <div style={{border:'1px solid #e7edf3',borderRadius:10,padding:14}}>
           <b style={{fontSize:12,color:'#26384e'}}>Cost preview</b>
-          <div style={{display:'flex',alignItems:'baseline',gap:7,marginTop:12}}><strong style={{fontSize:28,color:'#16875e'}}>₹0</strong><span style={{fontSize:11,color:'#68778c'}}>current website spend</span></div>
-          <p style={{fontSize:11,color:'#7b899b',lineHeight:1.6,margin:'6px 0 0'}}>No message is sent while this lock is active. Potential future Meta charges are not estimated because no verified rate card is configured here.</p>
+          <div style={{display:'flex',alignItems:'baseline',gap:7,marginTop:12}}><strong style={{fontSize:28,color:'#16875e'}}>₹0</strong><span style={{fontSize:11,color:'#68778c'}}>current send spend</span></div>
+          <p style={{fontSize:11,color:'#7b899b',lineHeight:1.6,margin:'6px 0 0'}}>No message is sent while this lock is active. Potential future Meta charges are not estimated because no verified rate card is configured here. This lock covers this website only; other apps using the same Meta account may still incur charges.</p>
           <div style={{marginTop:12,padding:'9px 10px',borderRadius:8,background:'#f3fbf6',fontSize:10,color:'#287b5c',lineHeight:1.5}}>No Meta send request · No quota reservation · No scheduler delivery</div>
         </div>
       </div>
